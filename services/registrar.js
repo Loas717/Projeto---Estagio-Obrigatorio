@@ -3,12 +3,12 @@ const { ethers } = require('ethers');
 require('dotenv').config();
 const abi = require('../config/abi.json');
 
-async function registrarCertificado(nome, curso, hashDoArquivo) {
+async function registrarCertificado(nome, curso, hashDoArquivo, ra) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, carteira);
 
-    const tx = await contrato.registrar("RA123", nome, hashDoArquivo);
+    const tx = await contrato.registrar(ra, nome, hashDoArquivo);
     await tx.wait(); 
 
     const novoRegistro = await Certificate.create({
@@ -22,4 +22,23 @@ async function registrarCertificado(nome, curso, hashDoArquivo) {
     return novoRegistro;
 }
 
-module.exports = { registrarCertificado };
+async function consultarCertificado(ra) {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, provider);
+    console.log("Consultando RA:", ra);
+    console.log("No Contrato:", process.env.CONTRACT_ADDRESS);
+    try {
+        const resultado = await contrato.consultar(ra);
+        
+        return {
+            nomeAluno: resultado[0],
+            hashConteudo: resultado[1],
+            dataRegistro: new Date(Number(resultado[2]) * 1000) 
+        };
+    } catch (error) {
+        console.error("Certificado não encontrado ou erro na rede:", error.reason);
+        return null;
+    }
+}
+
+module.exports = { registrarCertificado, consultarCertificado };

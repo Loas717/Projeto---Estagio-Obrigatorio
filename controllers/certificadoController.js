@@ -1,4 +1,4 @@
-const { registrarCertificado } = require('../services/registrar');
+const { registrarCertificado, consultarCertificado } = require('../services/registrar');
 const crypto = require('crypto');
 const fs = require('fs');
 
@@ -11,18 +11,18 @@ function gerarHashDoArquivo(caminhoArquivo) {
 
 async function registrar(req, res) {
     try {
-        const { nome, curso } = req.body;
+        const { nome, curso, ra } = req.body;
         const arquivo = req.file;
 
-        if (!nome || !curso || !arquivo) {
+        if (!nome || !curso || !ra || !arquivo) {
             return res.status(400).json({
-                error: 'Todos os campos são obrigatórios: nome, curso e arquivo'
+                error: 'Todos os campos são obrigatórios: nome, curso, RA e arquivo'
             });
         }
 
         const hashDoArquivo = gerarHashDoArquivo(arquivo.path);
 
-        const resultado = await registrarCertificado(nome, curso, hashDoArquivo);
+        const resultado = await registrarCertificado(nome, curso, hashDoArquivo, ra);
 
         fs.unlinkSync(arquivo.path);
 
@@ -49,6 +49,39 @@ async function registrar(req, res) {
     }
 }
 
+async function consultar(req, res) {
+    try {
+        const { ra } = req.query;
+
+        if (!ra) {
+            return res.status(400).json({
+                error: 'O campo RA é obrigatório para consulta'
+            });
+        }
+
+        const resultado = await consultarCertificado(ra);
+
+        if (!resultado) {
+            return res.status(404).json({
+                error: 'Certificado não encontrado para o RA fornecido'
+            });
+        }
+
+        res.status(200).json({
+            message: 'Consulta realizada com sucesso',
+            data: resultado
+        });
+
+    } catch (error) {
+        console.error('Erro ao consultar certificado:', error);
+        res.status(500).json({
+            error: 'Erro interno do servidor ao consultar certificado',
+            details: error.message
+        });
+    }
+}
+
 module.exports = {
-    registrar
+    registrar,
+    consultar
 };

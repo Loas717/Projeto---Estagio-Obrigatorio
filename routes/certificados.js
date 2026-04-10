@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { registrar } = require('../controllers/certificadoController');
+const { registrar, consultar } = require('../controllers/certificadoController');
 
 const upload = multer({ 
     dest: 'uploads/',
@@ -11,5 +11,6 @@ const upload = multer({
 });
 
 router.post('/registrar', upload.single('arquivo'), registrar);
+router.get('/consultar', consultar);
 
 module.exports = router;
