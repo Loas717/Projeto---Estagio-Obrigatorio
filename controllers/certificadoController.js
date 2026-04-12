@@ -81,7 +81,47 @@ async function consultar(req, res) {
     }
 }
 
+async function verificarHashArquivo(req, res) {
+    try {
+        const arquivo = req.file;
+
+        if (!arquivo) {
+            return res.status(400).json({
+                error: 'O campo arquivo é obrigatório'
+            });
+        }
+
+        const hashDoArquivo = gerarHashDoArquivo(arquivo.path);
+
+        const resultado = await registrarCertificado(nome, curso, hashDoArquivo, ra);
+
+        fs.unlinkSync(arquivo.path);
+
+        res.status(201).json({
+            message: 'Certificado registrado com sucesso',
+            data: resultado
+        });
+
+    } catch (error) {
+        console.error('Erro ao registrar certificado:', error);
+        
+        if (req.file) {
+            try {
+                fs.unlinkSync(req.file.path);
+            } catch (unlinkError) {
+                console.error('Erro ao remover arquivo temporário:', unlinkError);
+            }
+        }
+        
+        res.status(500).json({
+            error: 'Erro interno do servidor ao registrar certificado',
+            details: error.message
+        });
+    }
+}
+
 module.exports = {
     registrar,
-    consultar
+    consultar,
+    verificarHashArquivo
 };

@@ -41,4 +41,23 @@ async function consultarCertificado(ra) {
     }
 }
 
-module.exports = { registrarCertificado, consultarCertificado };
+async function verificarCertificado(hash) {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, provider);
+    console.log("Consultando Hash:", hash);
+    console.log("No Contrato:", process.env.CONTRACT_ADDRESS);
+    try {
+        const resultado = await contrato.verificar(hash);
+        
+        return {
+            nomeAluno: resultado[0],
+            hashConteudo: resultado[1],
+            dataRegistro: new Date(Number(resultado[2]) * 1000) 
+        };
+    } catch (error) {
+        console.error("Certificado não encontrado ou erro na rede:", error.reason);
+        return null;
+    }
+}
+
+module.exports = { registrarCertificado, consultarCertificado, verificarCertificado };

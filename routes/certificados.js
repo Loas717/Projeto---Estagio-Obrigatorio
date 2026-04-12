@@ -12,5 +12,6 @@ const upload = multer({
 
 router.post('/registrar', upload.single('arquivo'), registrar);
 router.get('/consultar', consultar);
+router.get('/verificar-arquivo', verificarHashArquivo);
 
 module.exports = router;
