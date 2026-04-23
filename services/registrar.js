@@ -2,6 +2,7 @@ const { Certificate } = require('../models');
 const { ethers } = require('ethers');
 require('dotenv').config();
 const abi = require('../config/abi.json');
+const abiIPFS = require('../config/abiIPFS.json');
 
 async function registrarCertificado(nome, curso, hashDoArquivo, ra) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
@@ -60,4 +61,23 @@ async function verificarCertificado(hash) {
     }
 }
 
-module.exports = { registrarCertificado, consultarCertificado, verificarCertificado };
+async function registrarCertificadoIPFS(nome, curso, ipfsCID, ra) {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, carteira);
+
+    const tx = await contrato.registrar(ra, nome, ipfsCID);
+    await tx.wait(); 
+
+    const novoRegistro = await Certificate.create({
+        studentName: nome,
+        courseName: curso,
+        documentHash: ipfsCID,
+        blockchainTx: tx.hash, 
+        issueDate: new Date()
+    });
+
+    return novoRegistro;
+}
+
+module.exports = { registrarCertificado, consultarCertificado, verificarCertificado, registrarCertificadoIPFS };

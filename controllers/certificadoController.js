@@ -1,4 +1,5 @@
-const { registrarCertificado, consultarCertificado } = require('../services/registrar');
+const { registrarCertificado, consultarCertificado, registrarCertificadoIPFS } = require('../services/registrar');
+const {uploadToIPFS} = require('../services/ipfsService')
 const crypto = require('crypto');
 const fs = require('fs');
 
@@ -120,8 +121,64 @@ async function verificarHashArquivo(req, res) {
     }
 }
 
+function gerarCertificadoJSON(nome, curso, ra, hashArquivo) {
+    return {
+        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        "type": ["VerifiableCredential", "UniversityDegree"],
+        "issuer": "did:pucminas:12345",
+        "issuanceDate": new Date().toISOString(),
+        "credentialSubject": {
+            "id": `did:aluno:${ra}`,
+            "name": nome,
+            "degree": curso,
+            "fileHash": hashArquivo 
+        },
+        "proof": {
+            "type": "EthereumEip712Signature2021",
+            "proofPurpose": "assertionMethod",
+            "verificationMethod": process.env.CONTRACT_ADDRESS
+        }
+    };
+}
+
+async function registrarIPFS(req, res) {
+    try {
+        const { nome, curso, ra } = req.body;
+        const arquivo = req.file;
+
+        if (!nome || !curso || !ra || !arquivo) {
+            if (arquivo) fs.unlinkSync(arquivo.path);
+            return res.status(400).json({ error: 'Campos obrigatórios: nome, curso, RA e arquivo' });
+        }
+
+        const hashDoArquivoPDF = gerarHashDoArquivo(arquivo.path);
+
+        const vcJSON = gerarCertificadoJSON(nome, curso, ra, hashDoArquivoPDF);
+
+        const ipfsCID = await uploadToIPFS(vcJSON);
+
+        const resultadoBlockchain = await registrarCertificadoIPFS(nome, curso, ipfsCID, ra);
+
+        fs.unlinkSync(arquivo.path);
+
+        res.status(201).json({
+            message: 'Certificado registrado com sucesso (Padrão MIT/IPFS)',
+            blockchain: resultadoBlockchain,
+            ipfsLink: `https://gateway.pinata.cloud/ipfs/${ipfsCID}`,
+            credential: vcJSON
+        });
+
+    } catch (error) {
+        console.error('Erro no fluxo de registro:', error);
+        if (req.file) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: 'Erro interno', details: error.message });
+    }
+}
+
 module.exports = {
     registrar,
     consultar,
-    verificarHashArquivo
+    verificarHashArquivo,
+    gerarCertificadoJSON,
+    registrarIPFS
 };
