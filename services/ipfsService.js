@@ -15,7 +15,6 @@ async function uploadToIPFS(jsonDocument) {
 
         const res = await axios(config);
         
-        // O CID é o "endereço" único do seu arquivo no mundo todo
         console.log("Arquivo no IPFS com CID:", res.data.IpfsHash);
         return res.data.IpfsHash; 
     } catch (error) {
