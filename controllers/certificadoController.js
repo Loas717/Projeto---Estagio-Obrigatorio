@@ -175,10 +175,60 @@ async function registrarIPFS(req, res) {
     }
 }
 
+async function verificarIPFS(req, res) {
+    try {
+        const { ra } = req.body;
+        const arquivoRecebido = req.file;
+
+        const registro = await consultarCertificado(ra); 
+        const cidNaBlockchain = registro.ipfsCID;
+
+        const hashPDFRecebido = gerarHashDoArquivo(arquivoRecebido.path);
+
+        const response = await axios.get(`https://gateway.pinata.cloud/ipfs/${cidNaBlockchain}`);
+        const vcOriginal = response.data;
+
+        const ehValido = (hashPDFRecebido === vcOriginal.credentialSubject.fileHash);
+
+        fs.unlinkSync(arquivoRecebido.path);
+
+        res.status(200).json({
+            autentico: ehValido,
+            dadosOriginais: vcOriginal.credentialSubject,
+            timestampEmissao: vcOriginal.issuanceDate
+        });
+
+    } catch (error) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: 'Falha na verificação' });
+    }
+}
+
+async function verificarIPFS_CID(ipfsCID) {
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_IPFS, abiIPFS, provider);
+    
+    try {
+        const resultado = await contrato.verificarPorCID(ipfsCID);
+        
+        return {
+            aluno: resultado[0],
+            ra: resultado[1],
+            dataRegistro: new Date(Number(resultado[2]) * 1000),
+            status: "Autêntico - Registro encontrado na Blockchain"
+        };
+    } catch (error) {
+        console.error("Erro na verificação:", error.reason);
+        return { status: "Inválido - Este CID não consta nos registros oficiais." };
+    }
+}
+
 module.exports = {
     registrar,
     consultar,
     verificarHashArquivo,
     gerarCertificadoJSON,
+    verificarIPFS,
+    verificarIPFS_CID,
     registrarIPFS
 };
