@@ -76,6 +76,11 @@
       },
       {
         "internalType": "string",
+        "name": "ra",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
         "name": "cid",
         "type": "string"
       },

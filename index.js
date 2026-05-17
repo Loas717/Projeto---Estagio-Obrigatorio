@@ -2,7 +2,16 @@ const express = require('express');
 const certificadosRouter = require('./routes/certificados');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
+
+const cors = require('cors');
+
+app.use(cors({
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 
 // Middleware para parsear JSON
 app.use(express.json());

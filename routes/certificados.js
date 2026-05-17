@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { registrar, consultar, verificarHashArquivo, registrarIPFS } = require('../controllers/certificadoController');
+const { registrar, consultar, verificarHashArquivo, registrarIPFS, verificarIPFS, consultarRA } = require('../controllers/certificadoController');
 
 const upload = multer({ 
     dest: 'uploads/',
@@ -14,5 +14,6 @@ router.post('/registrar', upload.single('arquivo'), registrar);
 router.post('/registrarIPFS', upload.single('arquivo'), registrarIPFS);
 router.get('/consultar', consultar);
 router.get('/verificar-arquivo', verificarHashArquivo);
+router.get('/verificar-por-ra/:ra', consultarRA);
 
 module.exports = router;

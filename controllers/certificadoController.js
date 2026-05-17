@@ -1,4 +1,6 @@
 const { registrarCertificado, consultarCertificado, registrarCertificadoIPFS } = require('../services/registrar');
+const { consultarIPFS_CID, consultarIPFS_RA } = require('../services/consultar');
+const axios = require('axios');
 const {uploadToIPFS} = require('../services/ipfsService')
 const crypto = require('crypto');
 const fs = require('fs');
@@ -204,22 +206,14 @@ async function verificarIPFS(req, res) {
     }
 }
 
-async function verificarIPFS_CID(ipfsCID) {
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_IPFS, abiIPFS, provider);
-    
+async function consultarRA(req, res) {
     try {
-        const resultado = await contrato.verificarPorCID(ipfsCID);
-        
-        return {
-            aluno: resultado[0],
-            ra: resultado[1],
-            dataRegistro: new Date(Number(resultado[2]) * 1000),
-            status: "Autêntico - Registro encontrado na Blockchain"
-        };
+        const { ra } = req.params;
+        const resultado = await consultarIPFS_RA(ra);
+        res.status(200).json(resultado);
     } catch (error) {
-        console.error("Erro na verificação:", error.reason);
-        return { status: "Inválido - Este CID não consta nos registros oficiais." };
+        console.error('Erro ao consultar RA:', error);
+        throw error;
     }
 }
 
@@ -229,6 +223,6 @@ module.exports = {
     verificarHashArquivo,
     gerarCertificadoJSON,
     verificarIPFS,
-    verificarIPFS_CID,
-    registrarIPFS
+    registrarIPFS,
+    consultarRA
 };
