@@ -1,5 +1,6 @@
 const express = require('express');
 const certificadosRouter = require('./routes/certificados');
+const authRouter = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -21,10 +22,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Rotas
 app.use('/certificados', certificadosRouter);
+app.use('/auth', authRouter);
 
 // Rota de teste
 app.get('/', (req, res) => {
-    res.json({ message: 'API de Certificados funcionando!' });
+    res.json({ message: 'API de Certificados e autenticação funcionando!' });
 });
 
 // Tratamento de erros 404
