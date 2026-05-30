@@ -115,4 +115,34 @@ async function login(req, res) {
   }
 }
 
-module.exports = { register, login };
+async function getProfile(req, res) {
+  try {
+    const usuarioId = req.usuarioLogado?.id;
+
+    if (!usuarioId) {
+      return res.status(401).json({ error: 'Não autorizado. Identificação do usuário não encontrada.' });
+    }
+
+    const user = await User.findByPk(usuarioId, {
+      attributes: ['id', 'fullName', 'email', 'role', 'isActive', 'createdAt'] // Seleciona apenas os campos necessários (sem a senha!)
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    return res.status(200).json({
+      message: 'Perfil recuperado com sucesso.',
+      user
+    });
+
+  } catch (error) {
+    console.error('Erro ao obter perfil do usuário:', error);
+    return res.status(500).json({ 
+      error: 'Erro interno ao recuperar perfil.', 
+      details: error.message 
+    });
+  }
+}
+
+module.exports = { register, login, getProfile };
