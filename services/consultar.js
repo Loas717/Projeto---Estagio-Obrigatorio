@@ -14,12 +14,12 @@ async function consultarIPFS_CID(ipfsCID) {
         return {
             aluno: resultado[0],
             ra: resultado[1],
-            dataRegistro: new Date(Number(resultado[3]) * 1000),
+            dataRegistro: new Date(Number(resultado[2]) * 1000),
             status: "Autêntico - Registro encontrado na Blockchain",
             success: true
         };
     } catch (error) {
-        console.error("Erro na verificação:", error.reason);
+        console.error("Erro na verificação:", error);
         return { success: false, status: "Inválido - Este CID não consta nos registros oficiais." };
     }
 }
