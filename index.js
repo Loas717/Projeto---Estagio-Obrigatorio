@@ -1,5 +1,6 @@
 const express = require('express');
 const certificadosRouter = require('./routes/certificados');
+const verificacaoRouter = require('./routes/verificacao');
 const authRouter = require('./routes/auth');
 
 const app = express();
@@ -23,7 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 // Rotas
 app.use('/certificados', certificadosRouter);
 app.use('/auth', authRouter);
-
+app.use('/verificacao', verificacaoRouter);
 // Rota de teste
 app.get('/', (req, res) => {
     res.json({ message: 'API de Certificados e autenticação funcionando!' });
