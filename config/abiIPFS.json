@@ -8,16 +8,22 @@
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
-        "internalType": "string",
-        "name": "ra",
-        "type": "string"
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "hashRa",
+        "type": "bytes32"
       },
       {
         "indexed": false,
         "internalType": "string",
         "name": "cid",
         "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "hashJson",
+        "type": "bytes32"
       }
     ],
     "name": "CertificadoRegistrado",
@@ -26,19 +32,19 @@
   {
     "inputs": [
       {
-        "internalType": "string",
-        "name": "_ra",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "_nome",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "_hashRa",
+        "type": "bytes32"
       },
       {
         "internalType": "string",
         "name": "_cid",
         "type": "string"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "_hashJson",
+        "type": "bytes32"
       }
     ],
     "name": "registrar",
@@ -62,22 +68,17 @@
   {
     "inputs": [
       {
-        "internalType": "string",
-        "name": "_ra",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "_hashRa",
+        "type": "bytes32"
       }
     ],
     "name": "consultar",
     "outputs": [
       {
-        "internalType": "string",
-        "name": "nome",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "ra",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "hashRa",
+        "type": "bytes32"
       },
       {
         "internalType": "string",
@@ -104,14 +105,33 @@
     "name": "verificarPorCID",
     "outputs": [
       {
-        "internalType": "string",
-        "name": "aluno",
-        "type": "string"
+        "internalType": "bytes32",
+        "name": "_hashRa",
+        "type": "bytes32"
       },
       {
-        "internalType": "string",
-        "name": "ra",
-        "type": "string"
+        "internalType": "uint256",
+        "name": "data",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_hashJson",
+        "type": "bytes32"
+      }
+    ],
+    "name": "verificarPorJson",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_hashRa",
+        "type": "bytes32"
       },
       {
         "internalType": "uint256",
