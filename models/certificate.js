@@ -16,8 +16,10 @@ module.exports = (sequelize, DataTypes) => {
   Certificate.init({
     studentName: DataTypes.STRING,
     courseName: DataTypes.STRING,
+    ra: DataTypes.STRING,
     documentHash: DataTypes.STRING,
     blockchainTx: DataTypes.STRING,
+    cid_pdf: DataTypes.STRING,
     issueDate: DataTypes.DATE
   }, {
     sequelize,
