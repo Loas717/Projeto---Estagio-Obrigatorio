@@ -61,19 +61,21 @@ async function verificarCertificado(hash) {
     }
 }
 
-async function registrarCertificadoIPFS(nome, curso, ipfsCID, ra) {
+async function registrarCertificadoIPFS(hashJson, ipfsCID, hashRA, nome, curso, ra) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, carteira);
 
-    const tx = await contrato.registrar(ra, nome, ipfsCID);
+    const tx = await contrato.registrar(hashRA, ipfsCID, hashJson);
     await tx.wait(); 
 
     const novoRegistro = await Certificate.create({
         studentName: nome,
         courseName: curso,
-        documentHash: ipfsCID,
+        documentHash: hashJson,
         blockchainTx: tx.hash, 
+        cid_pdf: ipfsCID,
+        ra: ra,
         issueDate: new Date()
     });
 

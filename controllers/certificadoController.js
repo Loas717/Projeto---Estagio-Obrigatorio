@@ -1,9 +1,11 @@
 const { registrarCertificado, consultarCertificado, registrarCertificadoIPFS } = require('../services/registrar');
-const { consultarIPFS_CID, consultarIPFS_RA } = require('../services/consultar');
+const { consultarIPFS_CID, consultarIPFS_RA, consultarCertificadoPorRA } = require('../services/consultar');
 const axios = require('axios');
-const {uploadToIPFS} = require('../services/ipfsService')
+const { uploadToIPFS } = require('../services/ipfsService');
+const { gerarVerifiableCredential, signVerifiableCredential } = require('../services/eip712Service');
 const crypto = require('crypto');
 const fs = require('fs');
+const { ethers } = require('ethers');
 
 function gerarHashDoArquivo(caminhoArquivo) {
     const fileBuffer = fs.readFileSync(caminhoArquivo);
@@ -155,16 +157,21 @@ async function registrarIPFS(req, res) {
 
         const hashDoArquivoPDF = gerarHashDoArquivo(arquivo.path);
 
-        const vcJSON = gerarCertificadoJSON(nome, curso, ra, hashDoArquivoPDF);
+        const vcJSON = gerarVerifiableCredential(nome, curso, ra, hashDoArquivoPDF);
+        const proofValue = await signVerifiableCredential(vcJSON);
+        vcJSON.proof.proofValue = proofValue;
+        const jsonstring = JSON.stringify(vcJSON)
+        const hashDoArquivoJSON = ethers.id(jsonstring);
+        const hashDoRA = '0x' + crypto.createHash('sha256').update(ra).digest('hex');
+        console.log('Hash do json:', hashDoArquivoJSON);
+        const ipfsCID = await uploadToIPFS(arquivo);
 
-        const ipfsCID = await uploadToIPFS(vcJSON);
-
-        const resultadoBlockchain = await registrarCertificadoIPFS(nome, curso, ipfsCID, ra);
+        const resultadoBlockchain = await registrarCertificadoIPFS(hashDoArquivoJSON, ipfsCID, hashDoRA, nome, curso, ra);
 
         fs.unlinkSync(arquivo.path);
 
         res.status(201).json({
-            message: 'Certificado registrado com sucesso (Padrão MIT/IPFS)',
+            message: 'Certificado registrado com sucesso (Padrão VC/IPFS/EIP-712)',
             blockchain: resultadoBlockchain,
             ipfsLink: `https://gateway.pinata.cloud/ipfs/${ipfsCID}`,
             credential: vcJSON
@@ -217,6 +224,35 @@ async function consultarRA(req, res) {
     }
 }
 
+async function obterPorRA(req, res) {
+    try {
+        const { ra } = req.params || req.query;
+
+        if (!ra) {
+            return res.status(400).json({
+                success: false,
+                error: 'O campo RA é obrigatório para consulta'
+            });
+        }
+
+        const resultado = await consultarCertificadoPorRA(ra);
+
+        if (!resultado.success) {
+            return res.status(404).json(resultado);
+        }
+
+        return res.status(200).json(resultado);
+
+    } catch (error) {
+        console.error('Erro ao obter certificado por RA:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro interno do servidor ao obter certificado',
+            details: error.message
+        });
+    }
+}
+
 module.exports = {
     registrar,
     consultar,
@@ -224,5 +260,6 @@ module.exports = {
     gerarCertificadoJSON,
     verificarIPFS,
     registrarIPFS,
-    consultarRA
+    consultarRA,
+    obterPorRA
 };
