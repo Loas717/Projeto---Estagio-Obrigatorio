@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { registrar, consultar, verificarHashArquivo, registrarIPFS, verificarIPFS, consultarRA, obterPorRA } = require('../controllers/certificadoController');
+const { registrar, consultar, verificarHashArquivo, registrarIPFS, verificarIPFS, consultarRA, obterPorRA, revogarCertificado } = require('../controllers/certificadoController');
 const { verificarToken, apenasAdmin } = require('../middlewares/authMiddleware');
 
 const upload = multer({ 
@@ -17,5 +17,6 @@ router.get('/consultar', verificarToken, consultar);
 router.get('/verificar-arquivo', verificarToken, verificarHashArquivo);
 router.get('/verificar-por-ra/:ra', verificarToken, consultarRA);
 router.get('/obter-por-ra/:ra', verificarToken, obterPorRA);
+router.post('/revogar', verificarToken, revogarCertificado);
 
 module.exports = router;

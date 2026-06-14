@@ -3,9 +3,11 @@ const { consultarIPFS_CID, consultarIPFS_RA, consultarCertificadoPorRA } = requi
 const axios = require('axios');
 const { uploadToIPFS } = require('../services/ipfsService');
 const { gerarVerifiableCredential, signVerifiableCredential } = require('../services/eip712Service');
+const { revogarCertificadoNaBlockchain } = require('../services/revogar');
 const crypto = require('crypto');
 const fs = require('fs');
 const { ethers } = require('ethers');
+require('dotenv').config();
 
 function gerarHashDoArquivo(caminhoArquivo) {
     const fileBuffer = fs.readFileSync(caminhoArquivo);
@@ -162,9 +164,9 @@ async function registrarIPFS(req, res) {
         vcJSON.proof.proofValue = proofValue;
         const jsonstring = JSON.stringify(vcJSON)
         const hashDoArquivoJSON = ethers.id(jsonstring);
-        const hashDoRA = ethers.id(ra);
+        const hashDoRA = ethers.id(`${process.env.SALT_KEY}`+ra);
         console.log('Hash do json:', hashDoArquivoJSON);
-        const ipfsCID = await uploadToIPFS(arquivo);
+        const ipfsCID = await uploadToIPFS(arquivo.path);
 
         const resultadoBlockchain = await registrarCertificadoIPFS(hashDoArquivoJSON, ipfsCID, hashDoRA, nome, curso, ra);
 
@@ -253,6 +255,30 @@ async function obterPorRA(req, res) {
     }
 }
 
+async function revogarCertificado(req, res) {
+    try {
+        const { ra, cid } = req.body;
+
+        if (!ra || !cid) {
+            return res.status(400).json({
+                error: 'Campos obrigatórios: RA e CID do certificado a ser revogado'
+            });
+        }
+
+        const resultado = await revogarCertificadoNaBlockchain(ra, cid);
+
+        res.status(200).json({
+            success: resultado.success,
+            message: 'Certificado revogado com sucesso',
+            blockchain: resultado
+        });
+
+    } catch (error) {
+        console.error('Erro ao revogar certificado:', error);
+        res.status(500).json({ error: 'Erro interno ao revogar certificado', details: error.message });
+    }
+}
+
 module.exports = {
     registrar,
     consultar,
@@ -261,5 +287,6 @@ module.exports = {
     verificarIPFS,
     registrarIPFS,
     consultarRA,
-    obterPorRA
+    obterPorRA,
+    revogarCertificado
 };
