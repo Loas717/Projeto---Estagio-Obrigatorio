@@ -2,6 +2,7 @@ const { ethers } = require('ethers');
 const { consultarIPFS_CID, consultarJSON } = require('./consultar'); 
 const { verifyVerifiableCredential, getIssuerAddress } = require('./eip712Service');
 const crypto = require('crypto');
+require('dotenv').config();
 
 async function verificarJSON(certificadoJSON) {
     try {
@@ -75,7 +76,7 @@ async function verificarJSON(certificadoJSON) {
         console.log('Nome extraído do JSON:', dadosCredencial);
         const raBrutoNoJson = dadosCredencial.credentialSubject?.id || String(certificadoJSON.blockchain?.ra || '');
         const raJsonLimpo = String(raBrutoNoJson).replace(/^did:aluno:/i, '') .toUpperCase().trim();
-        const hashDoRaJson = ethers.id(raJsonLimpo);
+        const hashDoRaJson = ethers.id(`${process.env.SALT_KEY}`+raJsonLimpo);
         console.log('tardadawd', raJsonLimpo,hashDoRaJson, registroBlockchain.hashRa)
         if (hashDoRaJson !== registroBlockchain.hashRa) {
             return {
