@@ -4,6 +4,7 @@ require('dotenv').config();
 const abi = require('../config/abi.json');
 const abiIPFS = require('../config/abiIPFS.json');
 const crypto = require('crypto');
+require('dotenv').config();
 
 async function consultarIPFS_CID(ipfsCID) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
@@ -54,37 +55,62 @@ async function consultarJSON(HashJSON) {
 async function consultarIPFS_RA(RA) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, provider);
+    
     try {
-        const hashRA = ethers.id(RA);
+        const hashRA = ethers.id(`${process.env.SALT_KEY}` + RA);
+        
         const resultado = await contrato.consultar(hashRA);
-        console.log('Resultado da consulta por RA:', resultado);
-        if (!resultado[0] || resultado[0] == "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        console.log(`Foram encontrados ${resultado.length} diplomas na Web3 para o RA ${RA}`);
+        
+        if (!resultado || resultado.length === 0) {
             return { 
                 success: false, 
                 status: "not_found", 
+                certificados: []
             };
         }
-        const userbasedOnRA = await consultarCertificadoPorRA(RA);
-        console.log('Resultado da consulta por RA:', userbasedOnRA);
+        const certInBD = await consultarCertificadoPorRA(RA);
+        const certificadosEncontrados = certInBD.success ? certInBD.data : [];
+        console.log("Dados do usuário encontrados no banco relacional:", certInBD);
+        const historicoDiplomas = resultado.map(diploma => {
+            const cidBlockchain = diploma[1]; 
+            const timestampEmSegundos = Number(diploma[3]); 
+            const estaRevogado = diploma[5]; 
+            
+            const dataOriginal = new Date(timestampEmSegundos * 1000);
+
+            return {
+                cid: cidBlockchain,
+                hashJson: diploma[2],
+                dataRegistro: dataOriginal,
+                dataFormatada: dataOriginal.toLocaleDateString('pt-BR', { 
+                    day: '2-digit', 
+                    month: 'long', 
+                    year: 'numeric' 
+                }),
+                course: certificadosEncontrados.find(c => c.documentHash === diploma[2])?.courseName || "Curso Desconhecido",
+                status: estaRevogado ? "Inválido - Diploma Revogado" : "Autêntico - Registro na Blockchain",
+                revogado: estaRevogado
+            };
+        });
+        
         return {
-            name: userbasedOnRA.data.studentName,
-            ra: userbasedOnRA.data.ra,
-            cid: userbasedOnRA.data.cid_pdf,
-            course: userbasedOnRA.data.courseName,
-            dataRegistro: new Date(Number(resultado[2]) * 1000),
-            status: "Autêntico - Registro encontrado na Blockchain",
-            success: true
+            success: true,
+            name: certInBD.studentName,
+            ra: certInBD.ra,
+            certificados: historicoDiplomas 
         };
+
     } catch (error) {
         console.log("Erro na verificação:", error);
-        console.error("Erro na verificação:", error.reason);
-        return { success: false, status: "Inválido - Este RA não consta nos registros oficiais." };
+        console.error("Motivo:", error.reason || error.message);
+        return { success: false, status: "Erro - Falha ao conectar com a rede Web3." };
     }
 }
 
 async function consultarCertificadoPorRA(ra) {
     try {
-        const certificado = await Certificate.findOne({
+        const certificado = await Certificate.findAll({
             where: { ra: ra },
             attributes: ['id', 'studentName', 'courseName', 'ra', 'documentHash', 'blockchainTx', 'cid_pdf', 'issueDate', 'createdAt', 'updatedAt']
         });
@@ -100,6 +126,8 @@ async function consultarCertificadoPorRA(ra) {
         return {
             success: true,
             status: "found",
+            studentName: certificado[0].studentName,
+            ra: certificado[0].ra,
             data: certificado,
             message: "Certificado encontrado com sucesso"
         };
