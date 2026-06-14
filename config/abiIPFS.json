@@ -30,6 +30,25 @@
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "hashJson",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "dataRevogacao",
+        "type": "uint256"
+      }
+    ],
+    "name": "CertificadoRevogado",
+    "type": "event"
+  },
+  {
     "inputs": [
       {
         "internalType": "bytes32",
@@ -48,6 +67,19 @@
       }
     ],
     "name": "registrar",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_hashJson",
+        "type": "bytes32"
+      }
+    ],
+    "name": "revogarCertificado",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -76,19 +108,41 @@
     "name": "consultar",
     "outputs": [
       {
-        "internalType": "bytes32",
-        "name": "hashRa",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "string",
-        "name": "cid",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "data",
-        "type": "uint256"
+        "components": [
+          {
+            "internalType": "bytes32",
+            "name": "hashRa",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "string",
+            "name": "ipfsCID",
+            "type": "string"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "hashJson",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "uint256",
+            "name": "dataRegistro",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "existe",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "revogado",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct RegistroAcademicoIPFS.Certificado[]",
+        "name": "",
+        "type": "tuple[]"
       }
     ],
     "stateMutability": "view",
@@ -137,6 +191,11 @@
         "internalType": "uint256",
         "name": "data",
         "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "revogado",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
