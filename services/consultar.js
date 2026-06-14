@@ -55,7 +55,7 @@ async function consultarIPFS_RA(RA) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, provider);
     try {
-        const hashRA = '0x' + crypto.createHash('sha256').update(RA).digest('hex');
+        const hashRA = ethers.id(RA);
         const resultado = await contrato.consultar(hashRA);
         console.log('Resultado da consulta por RA:', resultado);
         if (!resultado[0] || resultado[0] == "0x0000000000000000000000000000000000000000000000000000000000000000") {

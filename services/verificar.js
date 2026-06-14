@@ -74,10 +74,9 @@ async function verificarJSON(certificadoJSON) {
         const nomeNoJson = dadosCredencial.credentialSubject?.name || certificadoJSON.blockchain?.studentName || "Não informado";
         console.log('Nome extraído do JSON:', dadosCredencial);
         const raBrutoNoJson = dadosCredencial.credentialSubject?.id || String(certificadoJSON.blockchain?.ra || '');
-        const raJsonLimpo = String(raBrutoNoJson).replace('did:aluno:RA', '').replace('did:aluno:', '').toUpperCase().replace('RA', '').trim();
-
-        const hashDoRaJson = '0x' + crypto.createHash('sha256').update(raJsonLimpo).digest('hex');
-        console.log('tardadawd', hashDoRaJson, registroBlockchain.hashRa)
+        const raJsonLimpo = String(raBrutoNoJson).replace(/^did:aluno:/i, '') .toUpperCase().trim();
+        const hashDoRaJson = ethers.id(raJsonLimpo);
+        console.log('tardadawd', raJsonLimpo,hashDoRaJson, registroBlockchain.hashRa)
         if (hashDoRaJson !== registroBlockchain.hashRa) {
             return {
                 autentico: false,

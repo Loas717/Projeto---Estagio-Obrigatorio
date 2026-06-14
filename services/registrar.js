@@ -67,6 +67,7 @@ async function registrarCertificadoIPFS(hashJson, ipfsCID, hashRA, nome, curso, 
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, carteira);
 
     const tx = await contrato.registrar(hashRA, ipfsCID, hashJson);
+    console.log("Transação enviada. Hash:", tx.hash);
     await tx.wait(); 
 
     const novoRegistro = await Certificate.create({

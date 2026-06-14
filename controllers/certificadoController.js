@@ -162,7 +162,7 @@ async function registrarIPFS(req, res) {
         vcJSON.proof.proofValue = proofValue;
         const jsonstring = JSON.stringify(vcJSON)
         const hashDoArquivoJSON = ethers.id(jsonstring);
-        const hashDoRA = '0x' + crypto.createHash('sha256').update(ra).digest('hex');
+        const hashDoRA = ethers.id(ra);
         console.log('Hash do json:', hashDoArquivoJSON);
         const ipfsCID = await uploadToIPFS(arquivo);
 
