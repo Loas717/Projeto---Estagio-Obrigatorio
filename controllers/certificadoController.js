@@ -154,35 +154,58 @@ async function registrarIPFS(req, res) {
 
         if (!nome || !curso || !ra || !arquivo) {
             if (arquivo) fs.unlinkSync(arquivo.path);
-            return res.status(400).json({ error: 'Campos obrigatórios: nome, curso, RA e arquivo' });
+            return res.status(400).json({ error: 'Campos obrigatórios faltando.' });
         }
 
         const hashDoArquivoPDF = gerarHashDoArquivo(arquivo.path);
 
+        const algoritmo = 'aes-256-gcm';
+        const chaveSecreta = crypto.randomBytes(32);
+        const iv = crypto.randomBytes(12);
+
+        const pdfPuroBytes = fs.readFileSync(arquivo.path);
+
+        const cipher = crypto.createCipheriv(algoritmo, chaveSecreta, iv);
+        
+        const pdfCriptografadoBytes = Buffer.concat([
+            cipher.update(pdfPuroBytes),
+            cipher.final()
+        ]);
+        
+        const authTag = cipher.getAuthTag();
+
+        const ipfsCID = await uploadToIPFS(pdfCriptografadoBytes);
+
         const vcJSON = gerarVerifiableCredential(nome, curso, ra, hashDoArquivoPDF);
+        
+        vcJSON.credentialSubject.keys = {
+            cipherKey: chaveSecreta.toString('hex'),
+            cipherIv: iv.toString('hex'),
+            cipherTag: authTag.toString('hex')
+        };
+
         const proofValue = await signVerifiableCredential(vcJSON);
         vcJSON.proof.proofValue = proofValue;
-        const jsonstring = JSON.stringify(vcJSON)
+        
+        const jsonstring = JSON.stringify(vcJSON);
         const hashDoArquivoJSON = ethers.id(jsonstring);
-        const hashDoRA = ethers.id(`${process.env.SALT_KEY}`+ra);
-        console.log('Hash do json:', hashDoArquivoJSON);
-        const ipfsCID = await uploadToIPFS(arquivo.path);
+        const hashDoRA = ethers.id(`${process.env.SALT_KEY}` + ra);
 
         const resultadoBlockchain = await registrarCertificadoIPFS(hashDoArquivoJSON, ipfsCID, hashDoRA, nome, curso, ra);
 
         fs.unlinkSync(arquivo.path);
 
         res.status(201).json({
-            message: 'Certificado registrado com sucesso (Padrão VC/IPFS/EIP-712)',
-            blockchain: resultadoBlockchain,
-            ipfsLink: `https://gateway.pinata.cloud/ipfs/${ipfsCID}`,
-            credential: vcJSON
+          message: 'Certificado criptografado e registrado com sucesso!',
+          blockchain: resultadoBlockchain,
+          ipfsLink: `https://gateway.pinata.cloud/ipfs/${ipfsCID}`,
+          credential: vcJSON 
         });
 
     } catch (error) {
-        console.error('Erro no fluxo de registro:', error);
         if (req.file) fs.unlinkSync(req.file.path);
-        res.status(500).json({ error: 'Erro interno', details: error.message });
+        console.error(error);
+        res.status(500).json({ error: 'Erro interno no servidor.' });
     }
 }
 

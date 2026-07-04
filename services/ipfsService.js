@@ -3,10 +3,15 @@ const FormData = require('form-data');
 const fs = require('fs');
 require('dotenv').config();
 
-async function uploadToIPFS(caminhoDoArquivo) {
+async function uploadToIPFS(bufferCriptografado) {
     try {
         const data = new FormData();
-        data.append('file', fs.createReadStream(caminhoDoArquivo));
+        
+        data.append('file', bufferCriptografado, {
+            filename: 'diploma_criptografado.enc',
+            contentType: 'application/octet-stream',
+        });
+
         const config = {
             method: 'post',
             url: 'https://api.pinata.cloud/pinning/pinFileToIPFS',
@@ -18,11 +23,10 @@ async function uploadToIPFS(caminhoDoArquivo) {
         };
 
         const res = await axios(config);
-        
-        console.log("PDF enviado com sucesso para o IPFS com CID:", res.data.IpfsHash);
+        console.log("PDF Criptografado enviado para o IPFS. CID:", res.data.IpfsHash);
         return res.data.IpfsHash; 
     } catch (error) {
-        console.error("Erro ao subir PDF para IPFS:", error);
+        console.error("Erro ao subir para o IPFS:", error);
         throw error;
     }
 }
