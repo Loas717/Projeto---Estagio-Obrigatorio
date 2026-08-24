@@ -36,10 +36,19 @@ function verifyPassword(password, storedHash) {
 
 async function register(req, res) {
   try {
-    const { email, password, fullName, role } = req.body;
-
+    const { email, password, fullName, role, institutionName, ra } = req.body;
+    const normalizedRole = role === 'aluno' ? 'aluno' : 'instituicao';
+    console.log('adadadad')
     if (!email || !password) {
       return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+    }
+
+    if (normalizedRole === 'instituicao' && (!institutionName || !institutionName.trim())) {
+      return res.status(400).json({ error: 'A instituição é obrigatória para usuários do tipo instituição.' });
+    }
+
+    if (normalizedRole === 'aluno' && (!ra || !ra.trim())) {
+      return res.status(400).json({ error: 'O RA ou matrícula é obrigatório para usuários do tipo aluno.' });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -54,16 +63,20 @@ async function register(req, res) {
       fullName: fullName?.trim() || null,
       email: normalizedEmail,
       passwordHash,
-      role: role?.trim() || 'user',
+      role: normalizedRole,
+      institutionName: normalizedRole === 'instituicao' ? institutionName?.trim() || null : null,
+      ra: normalizedRole === 'aluno' ? ra?.trim() || null : null,
     });
 
     return res.status(201).json({
-      message: 'Usuário registrado com sucesso.',
+      message: `${normalizedRole === 'instituicao' ? 'Instituição' : 'Aluno'} registrado com sucesso.`,
       user: {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        institutionName: user.institutionName,
+        ra: user.ra,
         isActive: user.isActive,
       },
     });
@@ -75,7 +88,8 @@ async function register(req, res) {
 
 async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
+    const requestedRole = role === 'aluno' ? 'aluno' : 'instituicao';
 
     if (!email || !password) {
       return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
@@ -88,13 +102,17 @@ async function login(req, res) {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
+    if (requestedRole && user.role !== requestedRole) {
+      return res.status(401).json({ error: 'Tipo de usuário inválido para este login.' });
+    }
+
     if (!user.isActive) {
       return res.status(403).json({ error: 'Conta inativa. Entre em contato com o administrador.' });
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role }, 
-      process.env.JWT_SECRET, 
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '2h' }
     );
 
@@ -106,6 +124,8 @@ async function login(req, res) {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        institutionName: user.institutionName,
+        ra: user.ra,
         isActive: user.isActive,
       },
     });

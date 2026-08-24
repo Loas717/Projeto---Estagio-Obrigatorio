@@ -22,7 +22,18 @@ module.exports = (sequelize, DataTypes) => {
       role: {
         type: DataTypes.STRING,
         allowNull: false,
-        defaultValue: 'user',
+        defaultValue: 'instituicao',
+        validate: {
+          isIn: [['instituicao', 'aluno']],
+        },
+      },
+      institutionName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      ra: {
+        type: DataTypes.STRING,
+        allowNull: true,
       },
       isActive: {
         type: DataTypes.BOOLEAN,

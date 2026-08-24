@@ -21,11 +21,27 @@ function verificarToken(req, res, next) {
 }
 
 function apenasAdmin(req, res, next) {
-    if (req.usuarioLogado && req.usuarioLogado.role === 'admin') {
+    if (req.usuarioLogado && req.usuarioLogado.role === 'instituicao') {
         next();
     } else {
-        return res.status(403).json({ error: 'Acesso negado. Esta operação exige nível de Administrador.' });
+        return res.status(403).json({ error: 'Acesso negado. Esta operação exige nível de Instituição.' });
     }
 }
 
-module.exports = { verificarToken, apenasAdmin };
+function apenasInstituicao(req, res, next) {
+    if (req.usuarioLogado && req.usuarioLogado.role === 'instituicao') {
+        next();
+    } else {
+        return res.status(403).json({ error: 'Acesso negado. Requer perfil de instituição.' });
+    }
+}
+
+function apenasAluno(req, res, next) {
+    if (req.usuarioLogado && req.usuarioLogado.role === 'aluno') {
+        next();
+    } else {
+        return res.status(403).json({ error: 'Acesso negado. Requer perfil de aluno.' });
+    }
+}
+
+module.exports = { verificarToken, apenasAdmin, apenasInstituicao, apenasAluno };
