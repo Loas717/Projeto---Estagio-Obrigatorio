@@ -1,4 +1,4 @@
-const { Certificate } = require('../models');
+const { Certificate, User } = require('../models');
 const { ethers } = require('ethers');
 require('dotenv').config();
 const abi = require('../config/abi.json');
@@ -62,6 +62,17 @@ async function verificarCertificado(hash) {
 }
 
 async function registrarCertificadoIPFS(hashJson, ipfsCID, hashRA, nome, curso, ra) {
+    const raNormalizado = String(ra || '').trim();
+
+    if (!raNormalizado || raNormalizado === '00000') {
+        throw new Error('RA inválido. O certificado só pode ser emitido para um aluno cadastrado.');
+    }
+
+    const usuarioExiste = await User.findOne({ where: { ra: raNormalizado } });
+    if (!usuarioExiste) {
+        throw new Error(`RA ${raNormalizado} não está cadastrado como aluno.`);
+    }
+
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
     const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abiIPFS, carteira);
@@ -76,7 +87,7 @@ async function registrarCertificadoIPFS(hashJson, ipfsCID, hashRA, nome, curso, 
         documentHash: hashJson,
         blockchainTx: tx.hash, 
         cid_pdf: ipfsCID,
-        ra: ra,
+        ra: raNormalizado,
         issueDate: new Date()
     });
 

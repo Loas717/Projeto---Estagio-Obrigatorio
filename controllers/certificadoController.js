@@ -152,9 +152,21 @@ async function registrarIPFS(req, res) {
         const { nome, curso, ra } = req.body;
         const arquivo = req.file;
 
-        if (!nome || !curso || !ra || !arquivo) {
+        const raNormalizado = String(ra || '').trim();
+
+        if (!nome || !curso || !raNormalizado || !arquivo) {
             if (arquivo) fs.unlinkSync(arquivo.path);
             return res.status(400).json({ error: 'Campos obrigatórios faltando.' });
+        }
+
+        const { User } = require('../models');
+        const usuarioExiste = await User.findOne({ where: { ra: raNormalizado } });
+
+        if (!usuarioExiste) {
+            if (arquivo) fs.unlinkSync(arquivo.path);
+            return res.status(400).json({
+                error: `RA ${raNormalizado} não está cadastrado como aluno. Cadastre o aluno antes de emitir o certificado.`
+            });
         }
 
         const hashDoArquivoPDF = gerarHashDoArquivo(arquivo.path);
