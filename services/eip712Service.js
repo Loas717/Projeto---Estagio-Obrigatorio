@@ -12,11 +12,17 @@ const domain = {
 };
 
 const types = {
+    DocumentKeys: [
+        { name: 'cipherKey', type: 'string' },
+        { name: 'cipherIv', type: 'string' },
+        { name: 'cipherTag', type: 'string' }
+    ],
     CredentialSubject: [
         { name: 'id', type: 'string' },
         { name: 'name', type: 'string' },
         { name: 'degree', type: 'string' },
-        { name: 'fileHash', type: 'string' }
+        { name: 'fileHash', type: 'string' },
+        { name: 'keys', type: 'DocumentKeys' }
     ],
     VerifiableCredential: [
         { name: 'issuer', type: 'string' },
@@ -52,7 +58,17 @@ async function signVerifiableCredential(vc) {
     const value = {
         issuer: vc.issuer,
         issuanceDate: vc.issuanceDate,
-        credentialSubject: vc.credentialSubject,
+        credentialSubject: {
+            id: vc.credentialSubject.id,
+            name: vc.credentialSubject.name,
+            degree: vc.credentialSubject.degree,
+            fileHash: vc.credentialSubject.fileHash,
+            keys: {
+                cipherKey: vc.credentialSubject.keys.cipherKey,
+                cipherIv: vc.credentialSubject.keys.cipherIv,
+                cipherTag: vc.credentialSubject.keys.cipherTag
+            }
+        },
         documentHash: vc.documentHash
     };
     const signature = await wallet.signTypedData(domain, types, value);

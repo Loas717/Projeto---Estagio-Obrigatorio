@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { registrar, consultar, verificarHashArquivo, registrarIPFS, verificarIPFS, consultarRA, obterPorRA, revogarCertificado } = require('../controllers/certificadoController');
+const { registrar, consultar, verificarHashArquivo, registrarIPFS, verificarIPFS, consultarRA, obterPorRA, revogarCertificado, registrarCertificadosLote, verificarDiplomaMerkle, revogarCertificadoLote, consultarCertificadoLote, listarCertificadosLote } = require('../controllers/certificadoController');
 const { verificarToken, apenasAdmin } = require('../middlewares/authMiddleware');
 
 const upload = multer({ 
@@ -18,5 +18,11 @@ router.get('/verificar-arquivo', verificarToken, verificarHashArquivo);
 router.get('/verificar-por-ra/:ra', verificarToken, consultarRA);
 router.get('/obter-por-ra/:ra', verificarToken, obterPorRA);
 router.post('/revogar', verificarToken, revogarCertificado);
+
+router.post('/registrar-lote', registrarCertificadosLote);
+router.post('/verificar-merkle', verificarToken, verificarDiplomaMerkle);
+router.post('/revogar-lote', verificarToken, apenasAdmin, revogarCertificadoLote);
+router.get('/consultar-lote', verificarToken, consultarCertificadoLote);
+router.get('/listar-lote/:loteId', verificarToken, listarCertificadosLote);
 
 module.exports = router;

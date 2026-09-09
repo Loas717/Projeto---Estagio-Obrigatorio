@@ -20,7 +20,11 @@ module.exports = (sequelize, DataTypes) => {
     documentHash: DataTypes.STRING,
     blockchainTx: DataTypes.STRING,
     cid_pdf: DataTypes.STRING,
-    issueDate: DataTypes.DATE
+    issueDate: DataTypes.DATE,
+    loteId: DataTypes.INTEGER,
+    merkleProof: DataTypes.JSON,
+    raizMerkle: DataTypes.STRING,
+    revogadoEmLote: DataTypes.BOOLEAN
   }, {
     sequelize,
     modelName: 'Certificate',

@@ -1,8 +1,12 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 contract RegistroAcademicoIPFS {
     address public admin;
-    //CID pode não existir, pq é aonde o pdf está salvo (nem sempre é o caso)
+
+    //Emissão 1-para-1
     struct Certificado {
         bytes32 hashRa;
         string ipfsCID;
@@ -16,10 +20,18 @@ contract RegistroAcademicoIPFS {
     mapping(string => Certificado) private certificadosPorCID;
     mapping(bytes32 => Certificado) private certificadosPorJson;
 
+    //Emissão em Lote / Merkle
+    mapping(uint256 => bytes32) public raizesPorLote;
+    
+    mapping(bytes32 => bool) public certificadosEmLoteRevogados;
+
     event CertificadoRegistrado(bytes32 indexed hashRa, string cid, bytes32 hashJson);
     event CertificadoRevogado(bytes32 indexed hashJson, uint256 dataRevogacao);
+    
+    event LoteRegistrado(uint256 indexed loteId, bytes32 raiz, uint256 dataRegistro);
+    event CertificadoEmLoteRevogado(bytes32 indexed hashJson, uint256 dataRevogacao);
 
-    constructor(){
+    constructor() {
         admin = msg.sender;
     }
 
@@ -28,10 +40,8 @@ contract RegistroAcademicoIPFS {
         _;
     }
 
-    //_hash agora é _cid
+    //Fluxo Individual
     function registrar(bytes32 _hashRa, string memory _cid, bytes32 _hashJson) public apenasAdmin {
-        //require(!certificadosPorHashRA[_hashRa].existe, "Erro: Este RA ja possui um diploma.");
-        
         Certificado memory novoCert = Certificado({
             hashRa: _hashRa,
             ipfsCID: _cid,
@@ -81,5 +91,37 @@ contract RegistroAcademicoIPFS {
         }
 
         emit CertificadoRevogado(_hashJson, block.timestamp);
+    }
+
+    //Fluxo em Lote
+
+    function registrarLote(uint256 _loteId, bytes32 _raiz) public apenasAdmin {
+        require(raizesPorLote[_loteId] == bytes32(0), "Erro: Lote ja registrado.");
+        
+        raizesPorLote[_loteId] = _raiz;
+        
+        emit LoteRegistrado(_loteId, _raiz, block.timestamp);
+    }
+
+    function verificarDiplomaMerkle(
+        uint256 _loteId, 
+        bytes32 _hashJson, 
+        bytes32[] calldata _prova
+    ) public view returns (bool) {
+        
+        require(!certificadosEmLoteRevogados[_hashJson], "Erro: Certificado revogado.");
+
+        bytes32 raiz = raizesPorLote[_loteId];
+        require(raiz != bytes32(0), "Erro: Lote nao encontrado.");
+
+        return MerkleProof.verify(_prova, raiz, _hashJson);
+    }
+
+    function revogarCertificadoMerkle(bytes32 _hashJson) public apenasAdmin {
+        require(!certificadosEmLoteRevogados[_hashJson], "Erro: Certificado ja esta revogado.");
+        
+        certificadosEmLoteRevogados[_hashJson] = true;
+        
+        emit CertificadoEmLoteRevogado(_hashJson, block.timestamp);
     }
 }

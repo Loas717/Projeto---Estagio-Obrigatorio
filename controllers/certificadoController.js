@@ -4,6 +4,7 @@ const axios = require('axios');
 const { uploadToIPFS } = require('../services/ipfsService');
 const { gerarVerifiableCredential, signVerifiableCredential } = require('../services/eip712Service');
 const { revogarCertificadoNaBlockchain } = require('../services/revogar');
+const { enviarCertificadoPorEmail } = require('../services/emailService');
 const crypto = require('crypto');
 const fs = require('fs');
 const { ethers } = require('ethers');
@@ -205,13 +206,24 @@ async function registrarIPFS(req, res) {
 
         const resultadoBlockchain = await registrarCertificadoIPFS(hashDoArquivoJSON, ipfsCID, hashDoRA, nome, curso, ra);
 
+        const ipfsLink = `https://gateway.pinata.cloud/ipfs/${ipfsCID}`;
+        const emailResultado = await enviarCertificadoPorEmail({
+            to: usuarioExiste.email,
+            nomeAluno: nome,
+            curso,
+            ra: raNormalizado,
+            ipfsLink,
+            credential: vcJSON,
+        });
+
         fs.unlinkSync(arquivo.path);
 
         res.status(201).json({
           message: 'Certificado criptografado e registrado com sucesso!',
           blockchain: resultadoBlockchain,
-          ipfsLink: `https://gateway.pinata.cloud/ipfs/${ipfsCID}`,
-          credential: vcJSON 
+          ipfsLink,
+          credential: vcJSON,
+          email: emailResultado
         });
 
     } catch (error) {
@@ -314,6 +326,160 @@ async function revogarCertificado(req, res) {
     }
 }
 
+async function registrarCertificadosLote(req, res) {
+    try {
+        const { loteId, certificados } = req.body;
+
+        if (!loteId || !certificados || !Array.isArray(certificados) || certificados.length === 0) {
+            return res.status(400).json({
+                error: 'Campos obrigatórios: loteId (número) e certificados (array não vazio)'
+            });
+        }
+
+        // Validar estrutura de cada certificado
+        for (const cert of certificados) {
+            if (!cert.studentName || !cert.courseName || !cert.ra || !cert.documentHash) {
+                return res.status(400).json({
+                    error: 'Cada certificado deve ter: studentName, courseName, ra e documentHash'
+                });
+            }
+        }
+
+        const { registrarCertificadosEmLote } = require('../services/registrarLote');
+        const resultado = await registrarCertificadosEmLote(loteId, certificados);
+
+        res.status(201).json({
+            message: 'Lote de certificados registrado com sucesso',
+            data: resultado
+        });
+
+    } catch (error) {
+        console.error('Erro ao registrar lote:', error);
+        res.status(500).json({
+            error: 'Erro interno ao registrar lote de certificados',
+            details: error.message
+        });
+    }
+}
+
+async function verificarDiplomaMerkle(req, res) {
+    try {
+        const { loteId, documentHash, merkleProof } = req.body;
+
+        if (!loteId || !documentHash || !merkleProof || !Array.isArray(merkleProof)) {
+            return res.status(400).json({
+                error: 'Campos obrigatórios: loteId, documentHash e merkleProof (array)'
+            });
+        }
+
+        const { verificarDiplomaMerkle: verificarDiploma } = require('../services/registrarLote');
+        const isValido = await verificarDiploma(loteId, documentHash, merkleProof);
+
+        res.status(200).json({
+            valid: isValido,
+            message: isValido ? 'Diploma válido' : 'Diploma inválido',
+            loteId,
+            documentHash
+        });
+
+    } catch (error) {
+        console.error('Erro ao verificar diploma:', error);
+        res.status(500).json({
+            error: 'Erro ao verificar diploma',
+            details: error.message
+        });
+    }
+}
+
+async function revogarCertificadoLote(req, res) {
+    try {
+        const { documentHash } = req.body;
+
+        if (!documentHash) {
+            return res.status(400).json({
+                error: 'Campo obrigatório: documentHash'
+            });
+        }
+
+        const { revogarCertificadoMerkle } = require('../services/registrarLote');
+        const resultado = await revogarCertificadoMerkle(documentHash);
+
+        res.status(200).json({
+            message: 'Certificado revogado com sucesso',
+            data: resultado
+        });
+
+    } catch (error) {
+        console.error('Erro ao revogar certificado de lote:', error);
+        res.status(500).json({
+            error: 'Erro ao revogar certificado',
+            details: error.message
+        });
+    }
+}
+
+async function consultarCertificadoLote(req, res) {
+    try {
+        const { loteId, documentHash } = req.query;
+
+        if (!loteId || !documentHash) {
+            return res.status(400).json({
+                error: 'Parâmetros obrigatórios: loteId e documentHash'
+            });
+        }
+
+        const { consultarCertificadoLote: consultar } = require('../services/registrarLote');
+        const certificado = await consultar(loteId, documentHash);
+
+        if (!certificado) {
+            return res.status(404).json({
+                error: 'Certificado não encontrado'
+            });
+        }
+
+        res.status(200).json({
+            message: 'Certificado encontrado',
+            data: certificado
+        });
+
+    } catch (error) {
+        console.error('Erro ao consultar certificado de lote:', error);
+        res.status(500).json({
+            error: 'Erro ao consultar certificado',
+            details: error.message
+        });
+    }
+}
+
+async function listarCertificadosLote(req, res) {
+    try {
+        const { loteId } = req.params;
+
+        if (!loteId) {
+            return res.status(400).json({
+                error: 'Parâmetro obrigatório: loteId'
+            });
+        }
+
+        const { listarCertificadosLote: listar } = require('../services/registrarLote');
+        const certificados = await listar(loteId);
+
+        res.status(200).json({
+            message: 'Certificados do lote',
+            loteId,
+            total: certificados.length,
+            data: certificados
+        });
+
+    } catch (error) {
+        console.error('Erro ao listar certificados de lote:', error);
+        res.status(500).json({
+            error: 'Erro ao listar certificados',
+            details: error.message
+        });
+    }
+}
+
 module.exports = {
     registrar,
     consultar,
@@ -323,5 +489,10 @@ module.exports = {
     registrarIPFS,
     consultarRA,
     obterPorRA,
-    revogarCertificado
+    revogarCertificado,
+    registrarCertificadosLote,
+    verificarDiplomaMerkle,
+    revogarCertificadoLote,
+    consultarCertificadoLote,
+    listarCertificadosLote
 };
