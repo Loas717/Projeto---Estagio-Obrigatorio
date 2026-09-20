@@ -1,6 +1,7 @@
 const { ethers } = require('ethers');
 const { consultarIPFS_CID, consultarJSON } = require('./consultar'); 
 const { verifyVerifiableCredential, getIssuerAddress } = require('./eip712Service');
+const { verificarDiplomaMerkle } = require('./registrarLote');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -55,6 +56,49 @@ async function verificarJSON(certificadoJSON) {
             return {
                 autentico: false,
                 motivo: 'A assinatura digital não corresponde à chave oficial da Instituição.'
+            };
+        }
+
+        const dadosLote = certificadoJSON.blockchain;
+        if (dadosLote?.loteId && Array.isArray(dadosLote.merkleProof)) {
+            if (dadosLote.documentHash !== vc.documentHash) {
+                return {
+                    autentico: false,
+                    motivo: 'O hash do certificado diverge do hash registrado no lote.'
+                };
+            }
+
+            const loteValido = await verificarDiplomaMerkle(
+                dadosLote.loteId,
+                vc.documentHash,
+                dadosLote.merkleProof
+            );
+
+            if (!loteValido) {
+                return {
+                    autentico: false,
+                    motivo: 'A prova Merkle do certificado não foi validada pela Blockchain.'
+                };
+            }
+
+            const nomeDoLote = dadosLote.studentName || dadosCredencial.credentialSubject?.name || 'Não informado';
+            const raDoLote = String(dadosLote.ra || dadosCredencial.credentialSubject?.id || '')
+                .replace(/^did:aluno:/i, '')
+                .toUpperCase()
+                .trim();
+
+            return {
+                autentico: true,
+                mensagem: 'Diploma de lote verificado com sucesso via prova Merkle e assinatura EIP-712.',
+                detalhes: {
+                    aluno: nomeDoLote,
+                    ra: raDoLote,
+                    curso: dadosLote.courseName || dadosCredencial.credentialSubject?.degree || 'Não informado',
+                    dataEmissao: dadosLote.issueDate,
+                    transactionHash: dadosLote.blockchainTx || 'N/A',
+                    recoveredAddress,
+                    issuerAddress
+                }
             };
         }
 

@@ -1,12 +1,18 @@
 const { Certificate, User } = require('../models');
 const { ethers } = require('ethers');
-const crypto = require('crypto');
+const { gerarVerifiableCredential, signVerifiableCredential } = require('./eip712Service');
 require('dotenv').config();
 const abi = require('../config/abi.json');
 
-/**
- * Calcula a raiz de Merkle de um array de hashes
- */
+function hashParMerkle(hashA, hashB) {
+    const primeiro = hashA.toLowerCase() <= hashB.toLowerCase() ? hashA : hashB;
+    const segundo = primeiro === hashA ? hashB : hashA;
+    return ethers.keccak256(ethers.concat([
+        ethers.getBytes(primeiro),
+        ethers.getBytes(segundo)
+    ]));
+}
+
 function calcularRaizMerkle(hashes) {
     if (hashes.length === 0) {
         throw new Error('Array de hashes não pode estar vazio');
@@ -26,9 +32,7 @@ function calcularRaizMerkle(hashes) {
             const hash1 = nivelAtual[i];
             const hash2 = i + 1 < nivelAtual.length ? nivelAtual[i + 1] : hash1;
 
-            const combinado = hash1.replace('0x', '') + hash2.replace('0x', '');
-            const novoHash = crypto.createHash('sha256').update(Buffer.from(combinado, 'hex')).digest('hex');
-            proximoNivel.push('0x' + novoHash);
+            proximoNivel.push(hashParMerkle(hash1, hash2));
         }
 
         nivelAtual = proximoNivel;
@@ -37,9 +41,6 @@ function calcularRaizMerkle(hashes) {
     return nivelAtual[0];
 }
 
-/**
- * Gera a prova de Merkle para um hash específico
- */
 function gerarProvaMerkle(hashes, hashAlvo) {
     // Normalizar hashAlvo ANTES de usar
     const hashAlvoNormalizado = typeof hashAlvo === 'string' && hashAlvo.startsWith('0x')
@@ -77,19 +78,15 @@ function gerarProvaMerkle(hashes, hashAlvo) {
                 prova.push(hash2);
                 encontrado = true;
                 // O próximo hash será o hash combinado deste par
-                const combinado = hash1.replace('0x', '') + hash2.replace('0x', '');
-                hashProximo = '0x' + crypto.createHash('sha256').update(Buffer.from(combinado, 'hex')).digest('hex');
+                hashProximo = hashParMerkle(hash1, hash2);
             } else if (hash2 === hashAtual) {
                 // Se hash2 é o alvo e é o segundo do par
                 prova.push(hash1);
                 encontrado = true;
-                const combinado = hash1.replace('0x', '') + hash2.replace('0x', '');
-                hashProximo = '0x' + crypto.createHash('sha256').update(Buffer.from(combinado, 'hex')).digest('hex');
+                hashProximo = hashParMerkle(hash1, hash2);
             } else {
                 // Hash normal que não contém nosso alvo, apenas calcula
-                const combinado = hash1.replace('0x', '') + hash2.replace('0x', '');
-                const novoHash = '0x' + crypto.createHash('sha256').update(Buffer.from(combinado, 'hex')).digest('hex');
-                proximoNivel.push(novoHash);
+                proximoNivel.push(hashParMerkle(hash1, hash2));
             }
         }
 
@@ -109,13 +106,10 @@ function gerarProvaMerkle(hashes, hashAlvo) {
     return prova;
 }
 
-/**
- * Registra um lote na blockchain
- */
 async function registrarLoteNaBlockchain(loteId, raizMerkle) {
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, carteira);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, carteira);
 
     const tx = await contrato.registrarLote(loteId, raizMerkle);
     console.log(`Lote ${loteId} registrado. Hash da transação:`, tx.hash);
@@ -124,9 +118,6 @@ async function registrarLoteNaBlockchain(loteId, raizMerkle) {
     return tx.hash;
 }
 
-/**
- * Registra certificados em lote
- */
 async function registrarCertificadosEmLote(loteId, certificados) {
     if (!loteId || !certificados || certificados.length === 0) {
         throw new Error('loteId e certificados são obrigatórios');
@@ -178,6 +169,21 @@ async function registrarCertificadosEmLote(loteId, certificados) {
             throw new Error(`RA ${raNormalizado} não está cadastrado como aluno.`);
         }
 
+        const issueDate = new Date();
+        const credential = gerarVerifiableCredential(
+            cert.studentName,
+            cert.courseName,
+            raNormalizado,
+            cert.documentHash
+        );
+        credential.credentialSubject.keys = {
+            cipherKey: '',
+            cipherIv: '',
+            cipherTag: ''
+        };
+        credential.issuanceDate = issueDate.toISOString();
+        credential.proof.proofValue = await signVerifiableCredential(credential);
+
         const certificadoSalvo = await Certificate.create({
             studentName: cert.studentName,
             courseName: cert.courseName,
@@ -188,10 +194,24 @@ async function registrarCertificadosEmLote(loteId, certificados) {
             merkleProof: cert.merkleProof,
             raizMerkle: cert.raizMerkle,
             revogadoEmLote: false,
-            issueDate: new Date()
+            issueDate
         });
 
-        certificadosSalvos.push(certificadoSalvo);
+        certificadosSalvos.push({
+            ...certificadoSalvo.toJSON(),
+            credential,
+            blockchain: {
+                studentName: cert.studentName,
+                courseName: cert.courseName,
+                ra: raNormalizado,
+                documentHash: cert.documentHash,
+                blockchainTx: txHash,
+                loteId,
+                merkleProof: cert.merkleProof,
+                raizMerkle: cert.raizMerkle,
+                issueDate
+            }
+        });
     }
 
     return {
@@ -203,16 +223,13 @@ async function registrarCertificadosEmLote(loteId, certificados) {
     };
 }
 
-/**
- * Verifica um diploma usando Merkle proof
- */
 async function verificarDiplomaMerkle(loteId, documentHash, merkleProof) {
     if (!loteId || !documentHash || !merkleProof) {
         throw new Error('loteId, documentHash e merkleProof são obrigatórios');
     }
 
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, provider);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, provider);
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
@@ -230,9 +247,6 @@ async function verificarDiplomaMerkle(loteId, documentHash, merkleProof) {
     return resultado;
 }
 
-/**
- * Revoga um certificado em lote
- */
 async function revogarCertificadoMerkle(documentHash) {
     if (!documentHash) {
         throw new Error('documentHash é obrigatório');
@@ -240,7 +254,7 @@ async function revogarCertificadoMerkle(documentHash) {
 
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
     const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, carteira);
+    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, carteira);
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
@@ -263,9 +277,6 @@ async function revogarCertificadoMerkle(documentHash) {
     };
 }
 
-/**
- * Consulta um certificado de lote
- */
 async function consultarCertificadoLote(loteId, documentHash) {
     const certificado = await Certificate.findOne({
         where: {
@@ -292,9 +303,6 @@ async function consultarCertificadoLote(loteId, documentHash) {
     };
 }
 
-/**
- * Lista todos os certificados de um lote
- */
 async function listarCertificadosLote(loteId) {
     const certificados = await Certificate.findAll({
         where: { loteId: loteId }
