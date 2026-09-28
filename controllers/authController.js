@@ -38,17 +38,31 @@ async function register(req, res) {
   try {
     const { email, password, fullName, role, institutionName, ra } = req.body;
     const normalizedRole = role === 'aluno' ? 'aluno' : 'instituicao';
-    console.log('adadadad')
+    const normalizedInstitutionName = institutionName?.trim();
     if (!email || !password) {
       return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
     }
 
-    if (normalizedRole === 'instituicao' && (!institutionName || !institutionName.trim())) {
+    if (normalizedRole === 'instituicao' && !normalizedInstitutionName) {
       return res.status(400).json({ error: 'A instituição é obrigatória para usuários do tipo instituição.' });
+    }
+
+    if (normalizedRole === 'aluno' && !normalizedInstitutionName) {
+      return res.status(400).json({ error: 'A instituição é obrigatória para usuários do tipo aluno.' });
     }
 
     if (normalizedRole === 'aluno' && (!ra || !ra.trim())) {
       return res.status(400).json({ error: 'O RA ou matrícula é obrigatório para usuários do tipo aluno.' });
+    }
+
+    if (normalizedRole === 'aluno') {
+      const institutionExists = await User.findOne({
+        where: { role: 'instituicao', institutionName: normalizedInstitutionName, isActive: true },
+      });
+
+      if (!institutionExists) {
+        return res.status(400).json({ error: 'Selecione uma instituição cadastrada e ativa.' });
+      }
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -64,7 +78,7 @@ async function register(req, res) {
       email: normalizedEmail,
       passwordHash,
       role: normalizedRole,
-      institutionName: normalizedRole === 'instituicao' ? institutionName?.trim() || null : null,
+      institutionName: normalizedInstitutionName || null,
       ra: normalizedRole === 'aluno' ? ra?.trim() || null : null,
     });
 
@@ -83,6 +97,26 @@ async function register(req, res) {
   } catch (error) {
     console.error('Erro ao registrar usuário:', error);
     return res.status(500).json({ error: 'Erro interno ao registrar usuário.', details: error.message });
+  }
+}
+
+async function getInstitutions(req, res) {
+  try {
+    const institutions = await User.findAll({
+      attributes: ['institutionName'],
+      where: { role: 'instituicao', isActive: true },
+      order: [['institutionName', 'ASC']],
+    });
+    const institutionNames = [...new Set(
+      institutions
+        .map((institution) => institution.institutionName?.trim())
+        .filter(Boolean)
+    )];
+
+    return res.status(200).json({ institutions: institutionNames });
+  } catch (error) {
+    console.error('Erro ao buscar instituições:', error);
+    return res.status(500).json({ error: 'Erro ao buscar instituições.' });
   }
 }
 
@@ -165,4 +199,4 @@ async function getProfile(req, res) {
   }
 }
 
-module.exports = { register, login, getProfile };
+module.exports = { register, login, getProfile, getInstitutions };

@@ -1,8 +1,8 @@
 const { ethers } = require('ethers');
 require('dotenv').config();
 
-const issuerDid = process.env.ISSUER_DID || 'did:pucminas:12345';
 const issuerAddress = process.env.ISSUER_ADDRESS || new ethers.Wallet(process.env.PRIVATE_KEY).address;
+const issuerDid = process.env.ISSUER_DID || `did:ethr:${issuerAddress}`;
 
 const domain = {
     name: 'VerifiableCredential',

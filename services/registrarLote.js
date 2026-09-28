@@ -1,6 +1,7 @@
 const { Certificate, User } = require('../models');
 const { ethers } = require('ethers');
 const { gerarVerifiableCredential, signVerifiableCredential } = require('./eip712Service');
+const { enviarCertificadoPorEmail } = require('./emailService');
 require('dotenv').config();
 const abi = require('../config/abi.json');
 
@@ -197,9 +198,26 @@ async function registrarCertificadosEmLote(loteId, certificados) {
             issueDate
         });
 
+        let emailResultado;
+        try {
+            emailResultado = await enviarCertificadoPorEmail({
+                to: usuarioExiste.email,
+                nomeAluno: cert.studentName,
+                curso: cert.courseName,
+                ra: raNormalizado,
+                credential
+            });
+        } catch (error) {
+            console.error(`Erro ao enviar certificado por e-mail para RA ${raNormalizado}:`, error);
+            emailResultado = { sent: false, reason: 'EMAIL_SEND_FAILED' };
+        }
+
+        console.log(`Certificado para RA ${raNormalizado} registrado e e-mail enviado:`, emailResultado);
+
         certificadosSalvos.push({
             ...certificadoSalvo.toJSON(),
             credential,
+            email: emailResultado,
             blockchain: {
                 studentName: cert.studentName,
                 courseName: cert.courseName,
