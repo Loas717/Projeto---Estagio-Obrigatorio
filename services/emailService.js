@@ -69,7 +69,7 @@ async function enviarCertificadoPorEmail({ to, nomeAluno, curso, ra, ipfsLink, c
     `;
 
     await transporter.sendMail({
-        from: smtpUser,
+        from: process.env.EMAIL_FROM,
         to,
         subject: assunto,
         html,
