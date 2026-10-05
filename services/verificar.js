@@ -60,6 +60,7 @@ async function verificarJSON(certificadoJSON) {
         }
 
         const dadosLote = certificadoJSON.blockchain;
+        const dadosAluno = certificadoJSON.credential.credentialSubject
         if (dadosLote?.loteId && Array.isArray(dadosLote.merkleProof)) {
             if (dadosLote.documentHash !== vc.documentHash) {
                 return {
@@ -81,7 +82,7 @@ async function verificarJSON(certificadoJSON) {
                 };
             }
 
-            const nomeDoLote = dadosLote.studentName || dadosCredencial.credentialSubject?.name || 'Não informado';
+            const nomeDoLote = dadosAluno.name || 'Não informado';
             const raDoLote = String(dadosLote.ra || dadosCredencial.credentialSubject?.id || '')
                 .replace(/^did:aluno:/i, '')
                 .toUpperCase()
@@ -93,8 +94,8 @@ async function verificarJSON(certificadoJSON) {
                 detalhes: {
                     aluno: nomeDoLote,
                     ra: raDoLote,
-                    curso: dadosLote.courseName || dadosCredencial.credentialSubject?.degree || 'Não informado',
-                    dataEmissao: dadosLote.issueDate,
+                    curso: dadosAluno.degree || 'Não informado',
+                    dataEmissao: dadosAluno.issuanceDate,
                     transactionHash: dadosLote.blockchainTx || 'N/A',
                     recoveredAddress,
                     issuerAddress

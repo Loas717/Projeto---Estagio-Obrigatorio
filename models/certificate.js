@@ -17,6 +17,11 @@ module.exports = (sequelize, DataTypes) => {
     studentName: DataTypes.STRING,
     courseName: DataTypes.STRING,
     ra: DataTypes.STRING,
+    institutionId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'institution_id',
+    },
     documentHash: DataTypes.STRING,
     blockchainTx: DataTypes.STRING,
     cid_pdf: DataTypes.STRING,

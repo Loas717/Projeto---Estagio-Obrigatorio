@@ -1,4 +1,4 @@
-const { Certificate, User } = require('../models');
+const { Certificate, User, Institution } = require('../models');
 const { ethers } = require('ethers');
 const { gerarVerifiableCredential, signVerifiableCredential } = require('./eip712Service');
 const { enviarCertificadoPorEmail } = require('./emailService');
@@ -107,10 +107,60 @@ function gerarProvaMerkle(hashes, hashAlvo) {
     return prova;
 }
 
-async function registrarLoteNaBlockchain(loteId, raizMerkle) {
+async function obterContextoBlockchain(institutionId, exigeAssinatura = false) {
+    if (!institutionId) {
+        throw new Error('A instituição do certificado não foi informada.');
+    }
+
+    const institution = await Institution.findByPk(institutionId, {
+        attributes: ['id', 'contractAddress', 'walletAddress'],
+    });
+
+    if (!institution?.contractAddress || !ethers.isAddress(institution.contractAddress)) {
+        throw new Error('A instituição não possui um endereço de contrato válido cadastrado.');
+    }
+
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, carteira);
+    let signer = provider;
+
+    if (exigeAssinatura) {
+        if (!process.env.PRIVATE_KEY) {
+            throw new Error('PRIVATE_KEY não configurada para assinar transações.');
+        }
+        if (!institution.walletAddress || !ethers.isAddress(institution.walletAddress)) {
+            throw new Error('A instituição não possui um endereço de carteira válido cadastrado.');
+        }
+
+        const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+        if (carteira.address.toLowerCase() !== institution.walletAddress.toLowerCase()) {
+            throw new Error('A PRIVATE_KEY do servidor não corresponde à carteira cadastrada para esta instituição.');
+        }
+        signer = carteira;
+    }
+
+    return {
+        institution,
+        contrato: new ethers.Contract(institution.contractAddress, abi, signer),
+    };
+}
+
+async function obterInstitutionIdDoCertificado(documentHash, institutionId) {
+    if (institutionId) return institutionId;
+
+    const certificado = await Certificate.findOne({
+        where: { documentHash },
+        attributes: ['institutionId'],
+    });
+
+    if (!certificado?.institutionId) {
+        throw new Error('Não foi possível identificar a instituição deste certificado.');
+    }
+
+    return certificado.institutionId;
+}
+
+async function registrarLoteNaBlockchain(loteId, raizMerkle, institutionId) {
+    const { contrato } = await obterContextoBlockchain(institutionId, true);
 
     const tx = await contrato.registrarLote(loteId, raizMerkle);
     console.log(`Lote ${loteId} registrado. Hash da transação:`, tx.hash);
@@ -119,7 +169,7 @@ async function registrarLoteNaBlockchain(loteId, raizMerkle) {
     return tx.hash;
 }
 
-async function registrarCertificadosEmLote(loteId, certificados) {
+async function registrarCertificadosEmLote(loteId, certificados, institutionId) {
     if (!loteId || !certificados || certificados.length === 0) {
         throw new Error('loteId e certificados são obrigatórios');
     }
@@ -137,7 +187,7 @@ async function registrarCertificadosEmLote(loteId, certificados) {
     console.log(`Raiz de Merkle calculada para lote ${loteId}:`, raizMerkle);
 
     // Registrar lote na blockchain
-    const txHash = await registrarLoteNaBlockchain(loteId, raizMerkle);
+    const txHash = await registrarLoteNaBlockchain(loteId, raizMerkle, institutionId);
     console.log(`Lote ${loteId} registrado na blockchain. TX:`, txHash);
 
     // Gerar prova de Merkle para cada certificado
@@ -189,6 +239,7 @@ async function registrarCertificadosEmLote(loteId, certificados) {
             studentName: cert.studentName,
             courseName: cert.courseName,
             ra: raNormalizado,
+            institutionId,
             documentHash: cert.documentHash,
             blockchainTx: txHash,
             loteId: loteId,
@@ -225,6 +276,7 @@ async function registrarCertificadosEmLote(loteId, certificados) {
                 documentHash: cert.documentHash,
                 blockchainTx: txHash,
                 loteId,
+                institutionId,
                 merkleProof: cert.merkleProof,
                 raizMerkle: cert.raizMerkle,
                 issueDate
@@ -241,13 +293,13 @@ async function registrarCertificadosEmLote(loteId, certificados) {
     };
 }
 
-async function verificarDiplomaMerkle(loteId, documentHash, merkleProof) {
+async function verificarDiplomaMerkle(loteId, documentHash, merkleProof, institutionId) {
     if (!loteId || !documentHash || !merkleProof) {
         throw new Error('loteId, documentHash e merkleProof são obrigatórios');
     }
 
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, provider);
+    const resolvedInstitutionId = await obterInstitutionIdDoCertificado(documentHash, institutionId);
+    const { contrato } = await obterContextoBlockchain(resolvedInstitutionId);
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
@@ -270,9 +322,8 @@ async function revogarCertificadoMerkle(documentHash) {
         throw new Error('documentHash é obrigatório');
     }
 
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-    const contrato = new ethers.Contract(process.env.CONTRACT_ADDRESS_LOTE, abi, carteira);
+    const institutionId = await obterInstitutionIdDoCertificado(documentHash);
+    const { contrato } = await obterContextoBlockchain(institutionId, true);
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
@@ -285,7 +336,7 @@ async function revogarCertificadoMerkle(documentHash) {
     // Atualizar registro no banco
     await Certificate.update(
         { revogadoEmLote: true },
-        { where: { documentHash: documentHash } }
+        { where: { documentHash, institutionId } }
     );
 
     return {

@@ -346,7 +346,11 @@ async function registrarCertificadosLote(req, res) {
         }
 
         const { registrarCertificadosEmLote } = require('../services/registrarLote');
-        const resultado = await registrarCertificadosEmLote(loteId, certificados);
+        const resultado = await registrarCertificadosEmLote(
+            loteId,
+            certificados,
+            req.usuarioLogado?.institutionId
+        );
 
         res.status(201).json({
             message: 'Lote de certificados registrado com sucesso',
