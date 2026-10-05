@@ -27,9 +27,14 @@ module.exports = (sequelize, DataTypes) => {
           isIn: [['instituicao', 'aluno']],
         },
       },
-      institutionName: {
-        type: DataTypes.STRING,
+      institutionId: {
+        type: DataTypes.INTEGER,
         allowNull: true,
+        references: {
+          model: 'Institutions',
+          key: 'id',
+        },
+        onDelete: 'SET NULL',
       },
       ra: {
         type: DataTypes.STRING,
@@ -45,7 +50,22 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   User.associate = function (models) {
-    // associations can be defined here
+    User.belongsTo(models.Institution, {
+      foreignKey: 'institutionId',
+      as: 'institution',
+    });
+
+    User.hasMany(models.InstitutionStudent, {
+      foreignKey: 'studentId',
+      as: 'studentInstitutions',
+    });
+
+    User.belongsToMany(models.Institution, {
+      through: models.InstitutionStudent,
+      foreignKey: 'studentId',
+      otherKey: 'institutionId',
+      as: 'institutions',
+    });
   };
 
   return User;

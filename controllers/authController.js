@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { User } = require('../models');
+const { User, Institution, InstitutionStudent } = require('../models');
 const jwt = require('jsonwebtoken');
 
 const HASH_ITERATIONS = 120000;
@@ -36,33 +36,33 @@ function verifyPassword(password, storedHash) {
 
 async function register(req, res) {
   try {
-    const { email, password, fullName, role, institutionName, ra } = req.body;
+    const { email, password, fullName, role, institutionName, institutionNames, ra } = req.body;
     const normalizedRole = role === 'aluno' ? 'aluno' : 'instituicao';
-    const normalizedInstitutionName = institutionName?.trim();
+    const requestedInstitutionNames = Array.isArray(institutionNames)
+      ? institutionNames
+      : institutionName
+        ? [institutionName]
+        : [];
+    const normalizedInstitutionNames = [...new Set(
+      requestedInstitutionNames
+        .map((value) => typeof value === 'string' ? value.trim() : '')
+        .filter(Boolean)
+    )];
+
     if (!email || !password) {
       return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
     }
 
-    if (normalizedRole === 'instituicao' && !normalizedInstitutionName) {
+    if (normalizedRole === 'instituicao' && normalizedInstitutionNames.length === 0) {
       return res.status(400).json({ error: 'A instituição é obrigatória para usuários do tipo instituição.' });
     }
 
-    if (normalizedRole === 'aluno' && !normalizedInstitutionName) {
+    if (normalizedRole === 'aluno' && normalizedInstitutionNames.length === 0) {
       return res.status(400).json({ error: 'A instituição é obrigatória para usuários do tipo aluno.' });
     }
 
     if (normalizedRole === 'aluno' && (!ra || !ra.trim())) {
       return res.status(400).json({ error: 'O RA ou matrícula é obrigatório para usuários do tipo aluno.' });
-    }
-
-    if (normalizedRole === 'aluno') {
-      const institutionExists = await User.findOne({
-        where: { role: 'instituicao', institutionName: normalizedInstitutionName, isActive: true },
-      });
-
-      if (!institutionExists) {
-        return res.status(400).json({ error: 'Selecione uma instituição cadastrada e ativa.' });
-      }
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -73,24 +73,83 @@ async function register(req, res) {
     }
 
     const passwordHash = hashPassword(password);
+
+    if (normalizedRole === 'instituicao') {
+      const institutionNameValue = normalizedInstitutionNames[0];
+      const [institution] = await Institution.findOrCreate({
+        where: { name: institutionNameValue },
+        defaults: { name: institutionNameValue },
+      });
+
+      const user = await User.create({
+        fullName: fullName?.trim() || null,
+        email: normalizedEmail,
+        passwordHash,
+        role: normalizedRole,
+        institutionId: institution.id,
+      });
+
+      return res.status(201).json({
+        message: 'Instituição registrada com sucesso.',
+        user: {
+          id: user.id,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          institutionId: user.institutionId,
+          institutionName: institution.name,
+          ra: user.ra,
+          isActive: user.isActive,
+        },
+      });
+    }
+
+    const institutions = [];
+    for (const institutionNameValue of normalizedInstitutionNames) {
+      const institution = await Institution.findOne({ where: { name: institutionNameValue } });
+
+      if (!institution) {
+        return res.status(400).json({ error: 'Selecione uma instituição cadastrada e ativa.' });
+      }
+
+      institutions.push(institution);
+    }
+
     const user = await User.create({
       fullName: fullName?.trim() || null,
       email: normalizedEmail,
       passwordHash,
       role: normalizedRole,
-      institutionName: normalizedInstitutionName || null,
-      ra: normalizedRole === 'aluno' ? ra?.trim() || null : null,
+      ra: ra?.trim() || null,
     });
 
+    await Promise.all(
+      institutions.map((institution) =>
+        InstitutionStudent.findOrCreate({
+          where: {
+            institutionId: institution.id,
+            studentId: user.id,
+          },
+          defaults: {
+            institutionId: institution.id,
+            studentId: user.id,
+          },
+        })
+      )
+    );
+
     return res.status(201).json({
-      message: `${normalizedRole === 'instituicao' ? 'Instituição' : 'Aluno'} registrado com sucesso.`,
+      message: 'Aluno registrado com sucesso.',
       user: {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        institutionName: user.institutionName,
         ra: user.ra,
+        institutions: institutions.map((institution) => ({
+          id: institution.id,
+          name: institution.name,
+        })),
         isActive: user.isActive,
       },
     });
@@ -102,18 +161,16 @@ async function register(req, res) {
 
 async function getInstitutions(req, res) {
   try {
-    const institutions = await User.findAll({
-      attributes: ['institutionName'],
-      where: { role: 'instituicao', isActive: true },
-      order: [['institutionName', 'ASC']],
+    const institutions = await Institution.findAll({
+      attributes: ['name'],
+      order: [['name', 'ASC']],
     });
-    const institutionNames = [...new Set(
-      institutions
-        .map((institution) => institution.institutionName?.trim())
-        .filter(Boolean)
-    )];
 
-    return res.status(200).json({ institutions: institutionNames });
+    const institutionNames = institutions
+      .map((institution) => institution.name?.trim())
+      .filter(Boolean);
+
+    return res.status(200).json({ institutions: [...new Set(institutionNames)] });
   } catch (error) {
     console.error('Erro ao buscar instituições:', error);
     return res.status(500).json({ error: 'Erro ao buscar instituições.' });
@@ -130,7 +187,14 @@ async function login(req, res) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ where: { email: normalizedEmail } });
+    const user = await User.findOne({
+      where: { email: normalizedEmail },
+      include: [{
+        model: Institution,
+        as: 'institution',
+        attributes: ['id', 'name'],
+      }],
+    });
 
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
@@ -145,7 +209,11 @@ async function login(req, res) {
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      {
+        id: user.id,
+        role: user.role,
+        institutionId: user.institutionId || null,
+      },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '2h' }
     );
@@ -158,7 +226,9 @@ async function login(req, res) {
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        institutionName: user.institutionName,
+        institutionId: user.institutionId,
+        institutionName: user.institution?.name || null,
+        contractAddress: user.institution?.contractAddress || null,
         ra: user.ra,
         isActive: user.isActive,
       },
@@ -178,7 +248,12 @@ async function getProfile(req, res) {
     }
 
     const user = await User.findByPk(usuarioId, {
-      attributes: ['id', 'fullName', 'email', 'role', 'isActive', 'createdAt'] // Seleciona apenas os campos necessários (sem a senha!)
+      attributes: ['id', 'fullName', 'email', 'role', 'institutionId', 'isActive', 'createdAt'],
+      include: [{
+        model: Institution,
+        as: 'institution',
+        attributes: ['id', 'name'],
+      }],
     });
 
     if (!user) {
@@ -187,7 +262,11 @@ async function getProfile(req, res) {
 
     return res.status(200).json({
       message: 'Perfil recuperado com sucesso.',
-      user
+      user: {
+        ...user.toJSON(),
+        institutionName: user.institution?.name || null,
+        contractAddress: user.institution?.contractAddress || null,
+      },
     });
 
   } catch (error) {
