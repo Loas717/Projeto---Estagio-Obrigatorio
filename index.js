@@ -3,6 +3,7 @@ const certificadosRouter = require('./routes/certificados');
 const verificacaoRouter = require('./routes/verificacao');
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth');
+const institutionsRouter = require('./routes/institutions');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 // Rotas
 app.use('/certificados', certificadosRouter);
 app.use('/auth', authRouter);
+app.use('/institutions', institutionsRouter);
 app.use('/verificacao', verificacaoRouter);
 app.use('/users', usersRouter);
 // Rota de teste
