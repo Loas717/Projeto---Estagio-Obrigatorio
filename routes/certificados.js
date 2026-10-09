@@ -24,5 +24,5 @@ router.post('/verificar-merkle', verificarToken, verificarDiplomaMerkle);
 router.post('/revogar-lote', verificarToken, apenasAdmin, revogarCertificadoLote);
 router.get('/consultar-lote', verificarToken, consultarCertificadoLote);
 router.get('/listar-lote/:loteId', verificarToken, listarCertificadosLote);
-
+//
 module.exports = router;
