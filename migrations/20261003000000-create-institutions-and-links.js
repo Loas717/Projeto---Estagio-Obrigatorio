@@ -26,7 +26,7 @@ module.exports = {
         },
         });
 
-/*         await queryInterface.addColumn('Users', 'institutionId', {
+        await queryInterface.addColumn('Users', 'institutionId', {
         type: Sequelize.INTEGER,
         allowNull: true,
         references: {
@@ -35,7 +35,7 @@ module.exports = {
         },
         onUpdate: 'CASCADE',
         onDelete: 'SET NULL',
-        }); */
+        });
 
         await queryInterface.createTable('InstitutionStudents', {
         id: {
