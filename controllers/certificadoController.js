@@ -8,6 +8,8 @@ const { enviarCertificadoPorEmail } = require('../services/emailService');
 const crypto = require('crypto');
 const fs = require('fs');
 const { ethers } = require('ethers');
+const { Op } = require('sequelize');
+const { Certificate } = require('../models');
 require('dotenv').config();
 
 function gerarHashDoArquivo(caminhoArquivo) {
@@ -302,6 +304,67 @@ async function obterPorRA(req, res) {
     }
 }
 
+async function buscarCertificadosLotePorRA(req, res) {
+    try {
+        const ra = String(req.params.ra || '').trim();
+        const institutionId = req.usuarioLogado?.institutionId;
+
+        if (!ra) {
+            return res.status(400).json({
+                success: false,
+                error: 'O campo RA é obrigatório para consulta'
+            });
+        }
+
+        if (!institutionId) {
+            return res.status(403).json({
+                success: false,
+                error: 'A instituição do usuário não foi identificada.'
+            });
+        }
+
+        const certificados = await Certificate.findAll({
+            where: {
+                ra,
+                institutionId,
+                loteId: { [Op.not]: null }
+            },
+            attributes: ['id', 'studentName', 'courseName', 'ra', 'documentHash', 'loteId', 'issueDate', 'revogadoEmLote'],
+            order: [['issueDate', 'DESC'], ['id', 'DESC']]
+        });
+
+        if (certificados.length === 0) {
+            return res.status(404).json({
+                success: false,
+                status: 'not_found',
+                certificados: []
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            ra,
+            name: certificados[0].studentName,
+            certificados: certificados.map((certificado) => ({
+                id: certificado.id,
+                studentName: certificado.studentName,
+                courseName: certificado.courseName,
+                ra: certificado.ra,
+                documentHash: certificado.documentHash,
+                loteId: certificado.loteId,
+                issueDate: certificado.issueDate,
+                revogado: Boolean(certificado.revogadoEmLote)
+            }))
+        });
+    } catch (error) {
+        console.error('Erro ao buscar certificados em lote por RA:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Erro interno ao buscar certificados em lote.'
+        });
+    }
+}
+
 async function revogarCertificado(req, res) {
     try {
         const { ra, cid } = req.body;
@@ -398,6 +461,7 @@ async function verificarDiplomaMerkle(req, res) {
 async function revogarCertificadoLote(req, res) {
     try {
         const { documentHash } = req.body;
+        const institutionId = req.usuarioLogado?.institutionId;
 
         if (!documentHash) {
             return res.status(400).json({
@@ -405,8 +469,29 @@ async function revogarCertificadoLote(req, res) {
             });
         }
 
+        if (!institutionId) {
+            return res.status(403).json({
+                error: 'A instituição do usuário não foi identificada.'
+            });
+        }
+
+        const certificado = await Certificate.findOne({
+            where: {
+                documentHash,
+                institutionId,
+                loteId: { [Op.not]: null }
+            },
+            attributes: ['id']
+        });
+
+        if (!certificado) {
+            return res.status(404).json({
+                error: 'Certificado em lote não encontrado nesta instituição.'
+            });
+        }
+
         const { revogarCertificadoMerkle } = require('../services/registrarLote');
-        const resultado = await revogarCertificadoMerkle(documentHash);
+        const resultado = await revogarCertificadoMerkle(documentHash, institutionId);
 
         res.status(200).json({
             message: 'Certificado revogado com sucesso',
@@ -493,6 +578,7 @@ module.exports = {
     registrarIPFS,
     consultarRA,
     obterPorRA,
+    buscarCertificadosLotePorRA,
     revogarCertificado,
     registrarCertificadosLote,
     verificarDiplomaMerkle,

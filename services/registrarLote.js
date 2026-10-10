@@ -317,13 +317,13 @@ async function verificarDiplomaMerkle(loteId, documentHash, merkleProof, institu
     return resultado;
 }
 
-async function revogarCertificadoMerkle(documentHash) {
+async function revogarCertificadoMerkle(documentHash, institutionId) {
     if (!documentHash) {
         throw new Error('documentHash é obrigatório');
     }
 
-    const institutionId = await obterInstitutionIdDoCertificado(documentHash);
-    const { contrato } = await obterContextoBlockchain(institutionId, true);
+    const resolvedInstitutionId = await obterInstitutionIdDoCertificado(documentHash, institutionId);
+    const { contrato } = await obterContextoBlockchain(resolvedInstitutionId, true);
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
@@ -336,7 +336,7 @@ async function revogarCertificadoMerkle(documentHash) {
     // Atualizar registro no banco
     await Certificate.update(
         { revogadoEmLote: true },
-        { where: { documentHash, institutionId } }
+        { where: { documentHash, institutionId: resolvedInstitutionId } }
     );
 
     return {
