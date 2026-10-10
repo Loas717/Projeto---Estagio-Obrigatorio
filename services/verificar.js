@@ -146,7 +146,7 @@ async function verificarJSON(certificadoJSON) {
 
     } catch (error) {
         console.error("Erro crítico no fluxo do service de validação:", error);
-        return { autentico: false, motivo: "Falha crítica ao processar os componentes de criptografia." };
+        return { autentico: false, motivo: error.reason || "Falha crítica ao processar os componentes de criptografia." };
     }
 }
 
