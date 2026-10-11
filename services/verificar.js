@@ -51,7 +51,7 @@ async function verificarJSON(certificadoJSON) {
             };
         }
 
-        const issuerAddress = getIssuerAddress();
+        const issuerAddress = getIssuerAddress(vc.issuer);
         if (recoveredAddress.toLowerCase() !== issuerAddress.toLowerCase()) {
             return {
                 autentico: false,

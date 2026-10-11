@@ -1,6 +1,11 @@
 const { Certificate, User, Institution } = require('../models');
 const { ethers } = require('ethers');
-const { gerarVerifiableCredential, signVerifiableCredential } = require('./eip712Service');
+const {
+    gerarVerifiableCredential,
+    getEip712Domain,
+    types: credentialTypes,
+    verifyVerifiableCredential
+} = require('./eip712Service');
 const { enviarCertificadoPorEmail } = require('./emailService');
 require('dotenv').config();
 const abi = require('../config/abi.json');
@@ -107,7 +112,7 @@ function gerarProvaMerkle(hashes, hashAlvo) {
     return prova;
 }
 
-async function obterContextoBlockchain(institutionId, exigeAssinatura = false) {
+async function obterContextoBlockchain(institutionId) {
     if (!institutionId) {
         throw new Error('A instituição do certificado não foi informada.');
     }
@@ -121,26 +126,10 @@ async function obterContextoBlockchain(institutionId, exigeAssinatura = false) {
     }
 
     const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    let signer = provider;
-
-    if (exigeAssinatura) {
-        if (!process.env.PRIVATE_KEY) {
-            throw new Error('PRIVATE_KEY não configurada para assinar transações.');
-        }
-        if (!institution.walletAddress || !ethers.isAddress(institution.walletAddress)) {
-            throw new Error('A instituição não possui um endereço de carteira válido cadastrado.');
-        }
-
-        const carteira = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-        if (carteira.address.toLowerCase() !== institution.walletAddress.toLowerCase()) {
-            throw new Error('A PRIVATE_KEY do servidor não corresponde à carteira cadastrada para esta instituição.');
-        }
-        signer = carteira;
-    }
 
     return {
         institution,
-        contrato: new ethers.Contract(institution.contractAddress, abi, signer),
+        contrato: new ethers.Contract(institution.contractAddress, abi, provider),
     };
 }
 
@@ -159,73 +148,59 @@ async function obterInstitutionIdDoCertificado(documentHash, institutionId) {
     return certificado.institutionId;
 }
 
-async function registrarLoteNaBlockchain(loteId, raizMerkle, institutionId) {
-    const { contrato } = await obterContextoBlockchain(institutionId, true);
-
-    const tx = await contrato.registrarLote(loteId, raizMerkle);
-    console.log(`Lote ${loteId} registrado. Hash da transação:`, tx.hash);
-    await tx.wait();
-
-    return tx.hash;
-}
-
 async function registrarCertificadosEmLote(loteId, certificados, institutionId) {
-    if (!loteId || !certificados || certificados.length === 0) {
+    if (
+        !/^\d+$/.test(String(loteId)) ||
+        BigInt(loteId) < 1n ||
+        !Array.isArray(certificados) ||
+        certificados.length === 0
+    ) {
         throw new Error('loteId e certificados são obrigatórios');
     }
 
-    // Extrair hashes dos certificados
+    const { institution } = await obterContextoBlockchain(institutionId);
+    if (!institution.walletAddress || !ethers.isAddress(institution.walletAddress)) {
+        throw new Error('A instituição não possui um endereço de carteira válido cadastrado.');
+    }
+
     const hashes = certificados.map(cert => {
-        if (typeof cert.documentHash === 'string' && cert.documentHash.startsWith('0x')) {
-            return cert.documentHash;
-        }
-        return '0x' + cert.documentHash;
-    });
-
-    // Calcular raiz de Merkle
-    const raizMerkle = calcularRaizMerkle(hashes);
-    console.log(`Raiz de Merkle calculada para lote ${loteId}:`, raizMerkle);
-
-    // Registrar lote na blockchain
-    const txHash = await registrarLoteNaBlockchain(loteId, raizMerkle, institutionId);
-    console.log(`Lote ${loteId} registrado na blockchain. TX:`, txHash);
-
-    // Gerar prova de Merkle para cada certificado
-    const certificadosComProva = certificados.map(cert => {
-        const hashNormalizado = typeof cert.documentHash === 'string' && cert.documentHash.startsWith('0x')
+        const hash = typeof cert.documentHash === 'string' && cert.documentHash.startsWith('0x')
             ? cert.documentHash
-            : '0x' + cert.documentHash;
-
-        const prova = gerarProvaMerkle(hashes, hashNormalizado);
-        
-        return {
-            ...cert,
-            merkleProof: prova,
-            raizMerkle: raizMerkle
-        };
+            : `0x${cert.documentHash}`;
+        if (!ethers.isHexString(hash, 32)) {
+            throw new Error(`Hash de documento inválido para aluno ${cert.ra || 'sem RA'}.`);
+        }
+        return hash;
+    });
+    const raizMerkle = calcularRaizMerkle(hashes);
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const network = await provider.getNetwork();
+    const domain = getEip712Domain({
+        chainId: Number(network.chainId),
+        verifyingContract: institution.contractAddress
     });
 
-    // Salvar certificados no banco de dados
-    const certificadosSalvos = [];
-
-    for (const cert of certificadosComProva) {
-        // Validar RA
+    const certificadosPreparados = [];
+    for (const cert of certificados) {
         const raNormalizado = String(cert.ra || '').trim();
         if (!raNormalizado || raNormalizado === '00000') {
             throw new Error(`RA inválido para aluno ${cert.studentName}`);
         }
-
         const usuarioExiste = await User.findOne({ where: { ra: raNormalizado } });
         if (!usuarioExiste) {
             throw new Error(`RA ${raNormalizado} não está cadastrado como aluno.`);
         }
 
+        const hashNormalizado = typeof cert.documentHash === 'string' && cert.documentHash.startsWith('0x')
+            ? cert.documentHash
+            : '0x' + cert.documentHash;
         const issueDate = new Date();
         const credential = gerarVerifiableCredential(
             cert.studentName,
             cert.courseName,
             raNormalizado,
-            cert.documentHash
+            hashNormalizado,
+            institution.walletAddress
         );
         credential.credentialSubject.keys = {
             cipherKey: '',
@@ -233,7 +208,117 @@ async function registrarCertificadosEmLote(loteId, certificados, institutionId) 
             cipherTag: ''
         };
         credential.issuanceDate = issueDate.toISOString();
-        credential.proof.proofValue = await signVerifiableCredential(credential);
+        credential.proof.eip712Domain = domain;
+        certificadosPreparados.push({
+            ...cert,
+            ra: raNormalizado,
+            documentHash: hashNormalizado,
+            merkleProof: gerarProvaMerkle(hashes, hashNormalizado),
+            raizMerkle,
+            issueDate,
+            credential
+        });
+    }
+
+    return {
+        loteId,
+        raizMerkle,
+        contractAddress: institution.contractAddress,
+        walletAddress: ethers.getAddress(institution.walletAddress),
+        domain,
+        types: credentialTypes,
+        certificados: certificadosPreparados
+    };
+}
+
+async function confirmarCertificadosEmLote(loteId, raizMerkle, txHash, certificados, institutionId) {
+    if (!loteId || !raizMerkle || !txHash || !Array.isArray(certificados) || certificados.length === 0) {
+        throw new Error('loteId, raizMerkle, txHash e certificados são obrigatórios.');
+    }
+
+    const prepared = await registrarCertificadosEmLote(loteId, certificados, institutionId);
+    if (prepared.raizMerkle.toLowerCase() !== raizMerkle.toLowerCase()) {
+        throw new Error('A raiz Merkle enviada não corresponde aos certificados.');
+    }
+
+    const { institution, contrato } = await obterContextoBlockchain(institutionId);
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const transaction = await provider.getTransaction(txHash);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!transaction || !receipt || receipt.status !== 1) {
+        throw new Error('A transação do lote não foi encontrada ou não foi confirmada com sucesso.');
+    }
+    if (
+        !transaction.to ||
+        transaction.to.toLowerCase() !== institution.contractAddress.toLowerCase() ||
+        transaction.from.toLowerCase() !== institution.walletAddress.toLowerCase()
+    ) {
+        throw new Error('A transação não foi enviada pela carteira institucional ao contrato esperado.');
+    }
+
+    const parsedTransaction = contrato.interface.parseTransaction({
+        data: transaction.data,
+        value: transaction.value
+    });
+    if (
+        parsedTransaction?.name !== 'registrarLote' ||
+        BigInt(parsedTransaction.args[0]) !== BigInt(loteId) ||
+        String(parsedTransaction.args[1]).toLowerCase() !== prepared.raizMerkle.toLowerCase()
+    ) {
+        throw new Error('A transação confirmada não registra este lote e esta raiz Merkle.');
+    }
+
+    const certificadosComProva = certificados.map((cert, index) => {
+        const expected = prepared.certificados[index];
+        const credential = cert.credential;
+        if (!credential?.proof?.proofValue) {
+            throw new Error(`A credencial do aluno ${expected.ra} não contém uma assinatura.`);
+        }
+        if (
+            credential.issuer !== expected.credential.issuer ||
+            credential.proof?.type !== expected.credential.proof.type ||
+            credential.proof?.proofPurpose !== expected.credential.proof.proofPurpose ||
+            credential.proof?.verificationMethod !== expected.credential.proof.verificationMethod ||
+            credential.documentHash?.toLowerCase() !== expected.documentHash.toLowerCase() ||
+            credential.credentialSubject?.id !== expected.credential.credentialSubject.id ||
+            credential.credentialSubject?.name !== expected.studentName ||
+            credential.credentialSubject?.degree !== expected.courseName ||
+            credential.credentialSubject?.fileHash?.toLowerCase() !== expected.documentHash.toLowerCase() ||
+            ethers.TypedDataEncoder.hashDomain(credential.proof.eip712Domain) !==
+                ethers.TypedDataEncoder.hashDomain(prepared.domain)
+        ) {
+            throw new Error(`Os dados assinados da credencial do aluno ${expected.ra} foram alterados.`);
+        }
+        if (!Number.isFinite(Date.parse(credential.issuanceDate))) {
+            throw new Error(`A data de emissão da credencial do aluno ${expected.ra} é inválida.`);
+        }
+
+        const recoveredAddress = verifyVerifiableCredential(credential);
+        if (recoveredAddress.toLowerCase() !== institution.walletAddress.toLowerCase()) {
+            throw new Error(`A assinatura da credencial do aluno ${expected.ra} não pertence à instituição.`);
+        }
+        if (
+            credential.credentialSubject?.keys?.cipherKey !== '' ||
+            credential.credentialSubject?.keys?.cipherIv !== '' ||
+            credential.credentialSubject?.keys?.cipherTag !== ''
+        ) {
+            throw new Error(`Os dados de assinatura da credencial do aluno ${expected.ra} são inválidos.`);
+        }
+
+        return {
+            ...expected,
+            credential
+        };
+    });
+
+    const certificadosSalvos = [];
+    for (const cert of certificadosComProva) {
+        const raNormalizado = cert.ra;
+        const usuarioExiste = await User.findOne({ where: { ra: raNormalizado } });
+        if (!usuarioExiste) {
+            throw new Error(`RA ${raNormalizado} não está mais cadastrado como aluno.`);
+        }
+        const issueDate = new Date(cert.credential.issuanceDate);
 
         const certificadoSalvo = await Certificate.create({
             studentName: cert.studentName,
@@ -256,7 +341,7 @@ async function registrarCertificadosEmLote(loteId, certificados, institutionId) 
                 nomeAluno: cert.studentName,
                 curso: cert.courseName,
                 ra: raNormalizado,
-                credential
+                credential: cert.credential
             });
         } catch (error) {
             console.error(`Erro ao enviar certificado por e-mail para RA ${raNormalizado}:`, error);
@@ -267,7 +352,7 @@ async function registrarCertificadosEmLote(loteId, certificados, institutionId) 
 
         certificadosSalvos.push({
             ...certificadoSalvo.toJSON(),
-            credential,
+            credential: cert.credential,
             email: emailResultado,
             blockchain: {
                 studentName: cert.studentName,
@@ -286,7 +371,7 @@ async function registrarCertificadosEmLote(loteId, certificados, institutionId) 
 
     return {
         loteId: loteId,
-        raizMerkle: raizMerkle,
+        raizMerkle: prepared.raizMerkle,
         txHash: txHash,
         totalCertificados: certificadosSalvos.length,
         certificados: certificadosSalvos
@@ -317,21 +402,50 @@ async function verificarDiplomaMerkle(loteId, documentHash, merkleProof, institu
     return resultado;
 }
 
-async function revogarCertificadoMerkle(documentHash, institutionId) {
+async function revogarCertificadoMerkle(documentHash, institutionId, txHash) {
     if (!documentHash) {
         throw new Error('documentHash é obrigatório');
     }
+    if (!txHash) {
+        throw new Error('A transação assinada pela carteira institucional é obrigatória.');
+    }
 
     const resolvedInstitutionId = await obterInstitutionIdDoCertificado(documentHash, institutionId);
-    const { contrato } = await obterContextoBlockchain(resolvedInstitutionId, true);
+    const { institution, contrato } = await obterContextoBlockchain(resolvedInstitutionId);
+    if (!institution.walletAddress || !ethers.isAddress(institution.walletAddress)) {
+        throw new Error('A instituição não possui um endereço de carteira válido cadastrado.');
+    }
 
     const hashNormalizado = typeof documentHash === 'string' && documentHash.startsWith('0x')
         ? documentHash
         : '0x' + documentHash;
 
-    const tx = await contrato.revogarCertificadoMerkle(hashNormalizado);
-    console.log('Certificado revogado. Hash da transação:', tx.hash);
-    await tx.wait();
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const [transaction, receipt] = await Promise.all([
+        provider.getTransaction(txHash),
+        provider.getTransactionReceipt(txHash)
+    ]);
+    if (!transaction || !receipt || receipt.status !== 1) {
+        throw new Error('A transação de revogação não foi encontrada ou não foi confirmada com sucesso.');
+    }
+    if (
+        !transaction.to ||
+        transaction.to.toLowerCase() !== institution.contractAddress.toLowerCase() ||
+        transaction.from.toLowerCase() !== institution.walletAddress.toLowerCase()
+    ) {
+        throw new Error('A transação não foi enviada pela carteira institucional ao contrato esperado.');
+    }
+
+    const parsedTransaction = contrato.interface.parseTransaction({
+        data: transaction.data,
+        value: transaction.value
+    });
+    if (
+        parsedTransaction?.name !== 'revogarCertificadoMerkle' ||
+        String(parsedTransaction.args[0]).toLowerCase() !== hashNormalizado.toLowerCase()
+    ) {
+        throw new Error('A transação confirmada não revoga o certificado solicitado.');
+    }
 
     // Atualizar registro no banco
     await Certificate.update(
@@ -341,7 +455,7 @@ async function revogarCertificadoMerkle(documentHash, institutionId) {
 
     return {
         documentHash: documentHash,
-        txHash: tx.hash,
+        txHash,
         revogadoEm: new Date()
     };
 }
@@ -383,8 +497,8 @@ async function listarCertificadosLote(loteId) {
 module.exports = {
     calcularRaizMerkle,
     gerarProvaMerkle,
-    registrarLoteNaBlockchain,
     registrarCertificadosEmLote,
+    confirmarCertificadosEmLote,
     verificarDiplomaMerkle,
     revogarCertificadoMerkle,
     consultarCertificadoLote,

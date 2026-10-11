@@ -1,10 +1,7 @@
 const { ethers } = require('ethers');
 require('dotenv').config();
 
-const issuerAddress = process.env.ISSUER_ADDRESS || new ethers.Wallet(process.env.PRIVATE_KEY).address;
-const issuerDid = process.env.ISSUER_DID || `did:ethr:${issuerAddress}`;
-
-const domain = {
+const defaultDomain = {
     name: 'VerifiableCredential',
     version: '1',
     chainId: Number(process.env.CHAIN_ID || 1),
@@ -32,7 +29,27 @@ const types = {
     ]
 };
 
-function gerarVerifiableCredential(nome, curso, ra, fileHash) {
+function getIssuerAddress(issuer = process.env.ISSUER_ADDRESS) {
+    const candidate = issuer?.split(':').pop() || process.env.ISSUER_DID?.split(':').pop();
+    if (candidate && ethers.isAddress(candidate)) {
+        return ethers.getAddress(candidate);
+    }
+    if (process.env.PRIVATE_KEY) {
+        return new ethers.Wallet(process.env.PRIVATE_KEY).address;
+    }
+    throw new Error('O endereço da carteira emissora não foi informado.');
+}
+
+function getEip712Domain(overrides = {}) {
+    return { ...defaultDomain, ...overrides };
+}
+
+function gerarVerifiableCredential(nome, curso, ra, fileHash, issuerAddress) {
+    const resolvedIssuerAddress = getIssuerAddress(issuerAddress);
+    const issuerDid = process.env.ISSUER_DID && !issuerAddress
+        ? process.env.ISSUER_DID
+        : `did:ethr:${resolvedIssuerAddress}`;
+
     return {
         '@context': ['https://www.w3.org/2018/credentials/v1'],
         type: ['VerifiableCredential', 'UniversityDegree'],
@@ -53,8 +70,13 @@ function gerarVerifiableCredential(nome, curso, ra, fileHash) {
     };
 }
 
-async function signVerifiableCredential(vc) {
-    const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
+async function signVerifiableCredential(vc, signer, signingDomain) {
+    const signingWallet = signer || (
+        process.env.PRIVATE_KEY ? new ethers.Wallet(process.env.PRIVATE_KEY) : null
+    );
+    if (!signingWallet || typeof signingWallet.signTypedData !== 'function') {
+        throw new Error('É necessário fornecer a wallet institucional para assinar a credencial.');
+    }
     const value = {
         issuer: vc.issuer,
         issuanceDate: vc.issuanceDate,
@@ -71,7 +93,11 @@ async function signVerifiableCredential(vc) {
         },
         documentHash: vc.documentHash
     };
-    const signature = await wallet.signTypedData(domain, types, value);
+    const signature = await signingWallet.signTypedData(
+        signingDomain || vc.proof?.eip712Domain || defaultDomain,
+        types,
+        value
+    );
     return signature;
 }
 
@@ -87,17 +113,20 @@ function verifyVerifiableCredential(vc) {
         documentHash: vc.documentHash
     };
 
-    const recoveredAddress = ethers.verifyTypedData(domain, types, value, vc.proof.proofValue);
+    const recoveredAddress = ethers.verifyTypedData(
+        vc.proof.eip712Domain || defaultDomain,
+        types,
+        value,
+        vc.proof.proofValue
+    );
     return recoveredAddress;
-}
-
-function getIssuerAddress() {
-    return issuerAddress;
 }
 
 module.exports = {
     gerarVerifiableCredential,
     signVerifiableCredential,
     verifyVerifiableCredential,
-    getIssuerAddress
+    getIssuerAddress,
+    getEip712Domain,
+    types
 };

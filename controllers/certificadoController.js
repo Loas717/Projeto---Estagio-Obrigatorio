@@ -389,7 +389,7 @@ async function revogarCertificado(req, res) {
     }
 }
 
-async function registrarCertificadosLote(req, res) {
+async function prepararCertificadosLote(req, res) {
     try {
         const { loteId, certificados } = req.body;
 
@@ -415,15 +415,46 @@ async function registrarCertificadosLote(req, res) {
             req.usuarioLogado?.institutionId
         );
 
-        res.status(201).json({
-            message: 'Lote de certificados registrado com sucesso',
+        res.status(200).json({
+            message: 'Lote preparado para assinatura pela carteira institucional',
             data: resultado
         });
 
     } catch (error) {
-        console.error('Erro ao registrar lote:', error);
+        console.error('Erro ao preparar lote:', error);
         res.status(500).json({
-            error: 'Erro interno ao registrar lote de certificados',
+            error: 'Erro interno ao preparar lote de certificados',
+            details: error.message
+        });
+    }
+}
+
+async function registrarCertificadosLote(req, res) {
+    try {
+        const { loteId, raizMerkle, txHash, certificados } = req.body;
+        if (!loteId || !raizMerkle || !txHash || !Array.isArray(certificados) || certificados.length === 0) {
+            return res.status(400).json({
+                error: 'Campos obrigatórios: loteId, raizMerkle, txHash e certificados assinados'
+            });
+        }
+
+        const { confirmarCertificadosEmLote } = require('../services/registrarLote');
+        const resultado = await confirmarCertificadosEmLote(
+            loteId,
+            raizMerkle,
+            txHash,
+            certificados,
+            req.usuarioLogado?.institutionId
+        );
+
+        return res.status(201).json({
+            message: 'Lote de certificados registrado com sucesso',
+            data: resultado
+        });
+    } catch (error) {
+        console.error('Erro ao confirmar lote:', error);
+        return res.status(500).json({
+            error: 'Erro interno ao confirmar lote de certificados',
             details: error.message
         });
     }
@@ -460,12 +491,12 @@ async function verificarDiplomaMerkle(req, res) {
 
 async function revogarCertificadoLote(req, res) {
     try {
-        const { documentHash } = req.body;
+        const { documentHash, txHash } = req.body;
         const institutionId = req.usuarioLogado?.institutionId;
 
-        if (!documentHash) {
+        if (!documentHash || !txHash) {
             return res.status(400).json({
-                error: 'Campo obrigatório: documentHash'
+                error: 'Campos obrigatórios: documentHash e txHash'
             });
         }
 
@@ -491,7 +522,7 @@ async function revogarCertificadoLote(req, res) {
         }
 
         const { revogarCertificadoMerkle } = require('../services/registrarLote');
-        const resultado = await revogarCertificadoMerkle(documentHash, institutionId);
+        const resultado = await revogarCertificadoMerkle(documentHash, institutionId, txHash);
 
         res.status(200).json({
             message: 'Certificado revogado com sucesso',
@@ -580,6 +611,7 @@ module.exports = {
     obterPorRA,
     buscarCertificadosLotePorRA,
     revogarCertificado,
+    prepararCertificadosLote,
     registrarCertificadosLote,
     verificarDiplomaMerkle,
     revogarCertificadoLote,
