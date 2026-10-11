@@ -4,6 +4,24 @@ const { verifyVerifiableCredential, getIssuerAddress } = require('./eip712Servic
 const { verificarDiplomaMerkle } = require('./registrarLote');
 const crypto = require('crypto');
 require('dotenv').config();
+const abiRegistry = require('../config/abiRegistry.json');
+
+const REGISTRY_CONTRACT_ADDRESS = '0x05b57DB4be74d6838178634f045aE5f667Ff9c3b';
+
+async function validarEmissor(recoveredAddress) {
+    if (!process.env.RPC_URL) {
+        throw new Error('RPC_URL não configurada para consultar o registro de instituições.');
+    }
+
+    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+    const registro = new ethers.Contract(REGISTRY_CONTRACT_ADDRESS, abiRegistry, provider);
+    const [reconhecida, nome] = await registro.validarEmissor(recoveredAddress);
+
+    return {
+        emissorReconhecido: reconhecida,
+        nomeInstituicao: nome
+    };
+}
 
 async function verificarJSON(certificadoJSON) {
     try {
@@ -59,6 +77,7 @@ async function verificarJSON(certificadoJSON) {
             };
         }
 
+        const statusEmissor = await validarEmissor(recoveredAddress);
         const dadosLote = certificadoJSON.blockchain;
         const dadosAluno = certificadoJSON.credential.credentialSubject
         if (dadosLote?.loteId && Array.isArray(dadosLote.merkleProof)) {
@@ -91,6 +110,7 @@ async function verificarJSON(certificadoJSON) {
             return {
                 autentico: true,
                 mensagem: 'Diploma de lote verificado com sucesso via prova Merkle e assinatura EIP-712.',
+                ...statusEmissor,
                 detalhes: {
                     aluno: nomeDoLote,
                     ra: raDoLote,
@@ -133,6 +153,7 @@ async function verificarJSON(certificadoJSON) {
         return {
             autentico: true,
             mensagem: 'Diploma verificado com sucesso no padrão VC + EIP-712! Assinatura e registro on-chain validados.',
+            ...statusEmissor,
             detalhes: {
                 aluno: nomeNoJson,
                 ra: raJsonLimpo,
@@ -146,7 +167,7 @@ async function verificarJSON(certificadoJSON) {
 
     } catch (error) {
         console.error("Erro crítico no fluxo do service de validação:", error);
-        return { autentico: false, motivo: error.reason || "Falha crítica ao processar os componentes de criptografia." };
+        return { autentico: false, motivo: error.reason || error.message || "Falha crítica ao processar os componentes de criptografia." };
     }
 }
 

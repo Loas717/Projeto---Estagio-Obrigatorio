@@ -6,6 +6,9 @@ const {
     compileContract,
     saveInstitutionContract,
 } = require('../controllers/institutionController');
+const { credenciarInstituicao } = require('../controllers/institutionRegistryController');
+
+router.post('/register_institution', verificarToken, apenasInstituicao, credenciarInstituicao);
 
 router.get('/me', verificarToken, apenasInstituicao, getInstitutionProfile);
 router.get('/contract-artifact', verificarToken, apenasInstituicao, compileContract);

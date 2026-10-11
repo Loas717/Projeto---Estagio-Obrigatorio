@@ -1,0 +1,104 @@
+[
+    {
+        "inputs": [
+        {
+            "internalType": "address",
+            "name": "_carteira",
+            "type": "address"
+        },
+        {
+            "internalType": "string",
+            "name": "_nome",
+            "type": "string"
+        }
+        ],
+        "name": "credenciarInstituicao",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+        {
+            "internalType": "address",
+            "name": "_carteira",
+            "type": "address"
+        }
+        ],
+        "name": "revogarInstituicao",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [
+        {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+        }
+        ],
+        "name": "instituicoes",
+        "outputs": [
+        {
+            "internalType": "string",
+            "name": "nome",
+            "type": "string"
+        },
+        {
+            "internalType": "bool",
+            "name": "ativa",
+            "type": "bool"
+        },
+        {
+            "internalType": "bool",
+            "name": "registrada",
+            "type": "bool"
+        }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "institutionAdmin",
+        "outputs": [
+        {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+        }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+        {
+            "internalType": "address",
+            "name": "_carteira",
+            "type": "address"
+        }
+        ],
+        "name": "validarEmissor",
+        "outputs": [
+        {
+            "internalType": "bool",
+            "name": "",
+            "type": "bool"
+        },
+        {
+            "internalType": "string",
+            "name": "",
+            "type": "string"
+        }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
